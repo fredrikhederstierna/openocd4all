@@ -1,0 +1,33 @@
+From 27c749394270555698e3f5413082d5c6898d8151 Mon Sep 17 00:00:00 2001
+From: Fredrik Hederstierna <fredrik@hederstierna.com>
+Date: Thu, 18 Aug 2016 11:10:18 +0200
+Subject: [PATCH] tcl: Support for Texas Instruments CC1310
+
+target tcl to enable debugging of ARM Cortex-M3 on CC1310
+
+Change-Id: I8f9119f1057d3a74301b6d571a60254973cddc83
+Signed-off-by: Fredrik Hederstierna <fredrik@hederstierna.com>
+---
+
+diff --git a/tcl/target/cc1310.cfg b/tcl/target/cc1310.cfg
+new file mode 100644
+index 0000000..8f86bd4
+--- /dev/null
++++ b/tcl/target/cc1310.cfg
+@@ -0,0 +1,16 @@
++# Config for Texas Instruments low power RF SoC CC1310
++# http://www.ti.com/lit/pdf/swcu117f
++
++if { [info exists CHIPNAME] } {
++   set CHIPNAME $CHIPNAME
++} else {
++   set CHIPNAME cc1310
++}
++
++if { [info exists JRC_TAPID] } {
++   set JRC_TAPID $JRC_TAPID
++} else {
++   set JRC_TAPID 0x2B9BE02F
++}
++
++source [find target/cc26xx.cfg]
