@@ -1,0 +1,46 @@
+From 688f0ad9c16e6caa4bae2d21d4202ac7b538b5d9 Mon Sep 17 00:00:00 2001
+From: Rick Foos <rfoos@solengtech.com>
+Date: Mon, 25 Jul 2016 15:02:19 -0500
+Subject: [PATCH] tcl/board: Add board configuration for nRF51-DK, and nRF52-DK.
+
+Both boards use SEGGER interface.
+
+nRF52 flash driver is in change 3511.
+
+The board files were needed for transport select to SWD. The default
+jtag transport didn't failover to SWD.
+
+Change-Id: Id9c72aa88eeeb6a4e1999ee182f5284dbe535c05
+Signed-off-by: Rick Foos <rfoos@solengtech.com>
+---
+
+diff --git a/tcl/board/nordic_nrf51_dk.cfg b/tcl/board/nordic_nrf51_dk.cfg
+new file mode 100644
+index 0000000..96f5471
+--- /dev/null
++++ b/tcl/board/nordic_nrf51_dk.cfg
+@@ -0,0 +1,9 @@
++#
++# Nordic Semiconductor NRF51 Development Kit (nRF6824)
++#
++
++source [find interface/jlink.cfg]
++
++transport select swd
++
++source [find target/nrf51.cfg]
+diff --git a/tcl/board/nordic_nrf52_dk.cfg b/tcl/board/nordic_nrf52_dk.cfg
+new file mode 100644
+index 0000000..9f52866
+--- /dev/null
++++ b/tcl/board/nordic_nrf52_dk.cfg
+@@ -0,0 +1,9 @@
++#
++# Nordic Semiconductor NRF52 Development Kit (nRF52832)
++#
++
++source [find interface/jlink.cfg]
++
++transport select swd
++
++source [find target/nrf52.cfg]

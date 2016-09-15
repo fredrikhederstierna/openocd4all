@@ -35,6 +35,9 @@ git checkout -q 81631e49a608be93af0a473ec3f099cb556a2c8a
 # patches from zylin git gerrit to get extra TI cc13xx support
 patch -p1 -i ../patches/27c74939.diff
 patch -p1 -i ../patches/8eeaaee5.diff
+# patches from zylin git gerrit to get extra Nordic semi nrf52 support
+patch -p1 -i ../patches/688f0ad9.diff
+patch -p1 -i ../patches/nrf52.diff
 
 # configure openocd, enable all available dongles and some verbose debug
 ./bootstrap

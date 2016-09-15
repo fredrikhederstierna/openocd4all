@@ -1,0 +1,1153 @@
+diff --git a/src/flash/nor/nrf51.c b/src/flash/nor/nrf51.c
+index 69bf666..5bf7c21 100644
+--- a/src/flash/nor/nrf51.c
++++ b/src/flash/nor/nrf51.c
+@@ -35,7 +35,7 @@ enum nrf51_ficr_registers {
+ 	NRF51_FICR_BASE = 0x10000000, /* Factory Information Configuration Registers */
+ 
+ #define NRF51_FICR_REG(offset) (NRF51_FICR_BASE + offset)
+-
++	/* Following registers are common for NRF51 and NRF52 */
+ 	NRF51_FICR_CODEPAGESIZE		= NRF51_FICR_REG(0x010),
+ 	NRF51_FICR_CODESIZE		= NRF51_FICR_REG(0x014),
+ 	NRF51_FICR_CLENR0		= NRF51_FICR_REG(0x028),
+@@ -59,6 +59,7 @@ enum nrf51_ficr_registers {
+ 	NRF51_FICR_DEVICEADDRTYPE	= NRF51_FICR_REG(0x0A0),
+ 	NRF51_FICR_DEVICEADDR0		= NRF51_FICR_REG(0x0A4),
+ 	NRF51_FICR_DEVICEADDR1		= NRF51_FICR_REG(0x0A8),
++	/* Following registers are only in NRF51 */
+ 	NRF51_FICR_OVERRIDEN		= NRF51_FICR_REG(0x0AC),
+ 	NRF51_FICR_NRF_1MBIT0		= NRF51_FICR_REG(0x0B0),
+ 	NRF51_FICR_NRF_1MBIT1		= NRF51_FICR_REG(0x0B4),
+@@ -70,6 +71,36 @@ enum nrf51_ficr_registers {
+ 	NRF51_FICR_BLE_1MBIT2		= NRF51_FICR_REG(0x0F4),
+ 	NRF51_FICR_BLE_1MBIT3		= NRF51_FICR_REG(0x0F8),
+ 	NRF51_FICR_BLE_1MBIT4		= NRF51_FICR_REG(0x0FC),
++	/* Following registers are only available in NRF52 */
++	NRF51_FICR_INFO_PART		= NRF51_FICR_REG(0x100),
++	NRF51_FICR_INFO_VARIANT		= NRF51_FICR_REG(0x104),
++	NRF51_FICR_INFO_PACKAGE		= NRF51_FICR_REG(0x108),
++	NRF51_FICR_INFO_RAM		= NRF51_FICR_REG(0x10C),
++	NRF51_FICR_INFO_FLASH		= NRF51_FICR_REG(0x110),
++	NRF51_FICR_RESERVED_1		= NRF51_FICR_REG(0x114),
++	NRF51_FICR_RESERVED_2		= NRF51_FICR_REG(0x118),
++	NRF51_FICR_RESERVED_3		= NRF51_FICR_REG(0x11C),
++	NRF51_FICR_TEMP_A0		= NRF51_FICR_REG(0x404),
++	NRF51_FICR_TEMP_A1		= NRF51_FICR_REG(0x408),
++	NRF51_FICR_TEMP_A2		= NRF51_FICR_REG(0x40C),
++	NRF51_FICR_TEMP_A3		= NRF51_FICR_REG(0x410),
++	NRF51_FICR_TEMP_A4		= NRF51_FICR_REG(0x414),
++	NRF51_FICR_TEMP_A5		= NRF51_FICR_REG(0x418),
++	NRF51_FICR_TEMP_B0		= NRF51_FICR_REG(0x41C),
++	NRF51_FICR_TEMP_B1		= NRF51_FICR_REG(0x420),
++	NRF51_FICR_TEMP_B2		= NRF51_FICR_REG(0x424),
++	NRF51_FICR_TEMP_B3		= NRF51_FICR_REG(0x428),
++	NRF51_FICR_TEMP_B4		= NRF51_FICR_REG(0x42C),
++	NRF51_FICR_TEMP_B5		= NRF51_FICR_REG(0x430),
++	NRF51_FICR_TEMP_T0		= NRF51_FICR_REG(0x434),
++	NRF51_FICR_TEMP_T1		= NRF51_FICR_REG(0x438),
++	NRF51_FICR_TEMP_T2		= NRF51_FICR_REG(0x43C),
++	NRF51_FICR_TEMP_T3		= NRF51_FICR_REG(0x440),
++	NRF51_FICR_TEMP_T4		= NRF51_FICR_REG(0x444),
++	NRF51_FICR_NFC_TAGHEADER0	= NRF51_FICR_REG(0x450),
++	NRF51_FICR_NFC_TAGHEADER1	= NRF51_FICR_REG(0x454),
++	NRF51_FICR_NFC_TAGHEADER2	= NRF51_FICR_REG(0x458),
++	NRF51_FICR_NFC_TAGHEADER3	= NRF51_FICR_REG(0x45C),
+ };
+ 
+ enum nrf51_uicr_registers {
+@@ -80,10 +111,75 @@ enum nrf51_uicr_registers {
+ 
+ #define NRF51_UICR_REG(offset) (NRF51_UICR_BASE + offset)
+ 
++	/* Following registers are reserved in NRF52 */
+ 	NRF51_UICR_CLENR0	= NRF51_UICR_REG(0x000),
+ 	NRF51_UICR_RBPCONF	= NRF51_UICR_REG(0x004),
+ 	NRF51_UICR_XTALFREQ	= NRF51_UICR_REG(0x008),
+ 	NRF51_UICR_FWID		= NRF51_UICR_REG(0x010),
++	/* Following registers are only available in NRF52 */
++	NRF51_UICR_NRFFW_0	= NRF51_UICR_REG(0x014),
++	NRF51_UICR_NRFFW_1	= NRF51_UICR_REG(0x018),
++	NRF51_UICR_NRFFW_2	= NRF51_UICR_REG(0x01C),
++	NRF51_UICR_NRFFW_3	= NRF51_UICR_REG(0x020),
++	NRF51_UICR_NRFFW_4	= NRF51_UICR_REG(0x024),
++	NRF51_UICR_NRFFW_5	= NRF51_UICR_REG(0x028),
++	NRF51_UICR_NRFFW_6	= NRF51_UICR_REG(0x02C),
++	NRF51_UICR_NRFFW_7	= NRF51_UICR_REG(0x030),
++	NRF51_UICR_NRFFW_8	= NRF51_UICR_REG(0x034),
++	NRF51_UICR_NRFFW_9	= NRF51_UICR_REG(0x038),
++	NRF51_UICR_NRFFW_10	= NRF51_UICR_REG(0x03C),
++	NRF51_UICR_NRFFW_11	= NRF51_UICR_REG(0x040),
++	NRF51_UICR_NRFFW_12	= NRF51_UICR_REG(0x044),
++	NRF51_UICR_NRFFW_13	= NRF51_UICR_REG(0x048),
++	NRF51_UICR_NRFFW_14	= NRF51_UICR_REG(0x04C),
++	NRF51_UICR_NRFHW_0	= NRF51_UICR_REG(0x050),
++	NRF51_UICR_NRFHW_1	= NRF51_UICR_REG(0x054),
++	NRF51_UICR_NRFHW_2	= NRF51_UICR_REG(0x058),
++	NRF51_UICR_NRFHW_3	= NRF51_UICR_REG(0x05C),
++	NRF51_UICR_NRFHW_4	= NRF51_UICR_REG(0x060),
++	NRF51_UICR_NRFHW_5	= NRF51_UICR_REG(0x064),
++	NRF51_UICR_NRFHW_6	= NRF51_UICR_REG(0x068),
++	NRF51_UICR_NRFHW_7	= NRF51_UICR_REG(0x06C),
++	NRF51_UICR_NRFHW_8	= NRF51_UICR_REG(0x070),
++	NRF51_UICR_NRFHW_9	= NRF51_UICR_REG(0x074),
++	NRF51_UICR_NRFHW_10	= NRF51_UICR_REG(0x078),
++	NRF51_UICR_NRFHW_11	= NRF51_UICR_REG(0x07C),
++	NRF51_UICR_CUSTOMER_0	= NRF51_UICR_REG(0x080),
++	NRF51_UICR_CUSTOMER_1	= NRF51_UICR_REG(0x084),
++	NRF51_UICR_CUSTOMER_2	= NRF51_UICR_REG(0x088),
++	NRF51_UICR_CUSTOMER_3	= NRF51_UICR_REG(0x08C),
++	NRF51_UICR_CUSTOMER_4	= NRF51_UICR_REG(0x090),
++	NRF51_UICR_CUSTOMER_5	= NRF51_UICR_REG(0x094),
++	NRF51_UICR_CUSTOMER_6	= NRF51_UICR_REG(0x098),
++	NRF51_UICR_CUSTOMER_7	= NRF51_UICR_REG(0x09C),
++	NRF51_UICR_CUSTOMER_8	= NRF51_UICR_REG(0x0A0),
++	NRF51_UICR_CUSTOMER_9	= NRF51_UICR_REG(0x0A4),
++	NRF51_UICR_CUSTOMER_10	= NRF51_UICR_REG(0x0A8),
++	NRF51_UICR_CUSTOMER_11	= NRF51_UICR_REG(0x0AC),
++	NRF51_UICR_CUSTOMER_12	= NRF51_UICR_REG(0x0B0),
++	NRF51_UICR_CUSTOMER_13	= NRF51_UICR_REG(0x0B4),
++	NRF51_UICR_CUSTOMER_14	= NRF51_UICR_REG(0x0B8),
++	NRF51_UICR_CUSTOMER_15	= NRF51_UICR_REG(0x0BC),
++	NRF51_UICR_CUSTOMER_16	= NRF51_UICR_REG(0x0C0),
++	NRF51_UICR_CUSTOMER_17	= NRF51_UICR_REG(0x0C4),
++	NRF51_UICR_CUSTOMER_18	= NRF51_UICR_REG(0x0C8),
++	NRF51_UICR_CUSTOMER_19	= NRF51_UICR_REG(0x0CC),
++	NRF51_UICR_CUSTOMER_20	= NRF51_UICR_REG(0x0D0),
++	NRF51_UICR_CUSTOMER_21	= NRF51_UICR_REG(0x0D4),
++	NRF51_UICR_CUSTOMER_22	= NRF51_UICR_REG(0x0D8),
++	NRF51_UICR_CUSTOMER_23	= NRF51_UICR_REG(0x0DC),
++	NRF51_UICR_CUSTOMER_24	= NRF51_UICR_REG(0x0E0),
++	NRF51_UICR_CUSTOMER_25	= NRF51_UICR_REG(0x0E4),
++	NRF51_UICR_CUSTOMER_26	= NRF51_UICR_REG(0x0E8),
++	NRF51_UICR_CUSTOMER_27	= NRF51_UICR_REG(0x0EC),
++	NRF51_UICR_CUSTOMER_28	= NRF51_UICR_REG(0x0F0),
++	NRF51_UICR_CUSTOMER_29	= NRF51_UICR_REG(0x0F4),
++	NRF51_UICR_CUSTOMER_30	= NRF51_UICR_REG(0x0F8),
++	NRF51_UICR_CUSTOMER_31	= NRF51_UICR_REG(0x0FC),
++	NRF51_UICR_PSELRESET_0	= NRF51_UICR_REG(0x200),
++	NRF51_UICR_PSELRESET_1	= NRF51_UICR_REG(0x204),
++	NRF51_UICR_APPROTECT	= NRF51_UICR_REG(0x208),
++	NRF51_UICR_NFCPINS	= NRF51_UICR_REG(0x20C),
+ };
+ 
+ enum nrf51_nvmc_registers {
+@@ -103,7 +199,12 @@ enum nrf51_nvmc_config_bits {
+ 	NRF51_NVMC_CONFIG_REN = 0x00,
+ 	NRF51_NVMC_CONFIG_WEN = 0x01,
+ 	NRF51_NVMC_CONFIG_EEN = 0x02,
++};
+ 
++enum nrf51_hw_feature_bits {
++	NRF51_HW_FEATURE_CONFIG_V2  = (1 << 0),
++	NRF51_HW_FEATURE_PROTECT_V2 = (1 << 1),
++	/* More features can be added here if needed by newer chips. */
+ };
+ 
+ struct nrf51_info {
+@@ -117,15 +218,28 @@ struct nrf51_info {
+ 			      const uint8_t *buffer, uint32_t offset, uint32_t count);
+ 	} bank[2];
+ 	struct target *target;
++	uint32_t features;
+ };
+ 
+ struct nrf51_device_spec {
+ 	uint16_t hwid;
++	const char *part;
+ 	const char *variant;
+ 	const char *build_code;
+ 	unsigned int flash_size_kb;
++	uint32_t features;
+ };
+ 
++#define NRF51_DEVICE_DEF(id, pt, var, bcode, fsize, feat) \
++  {                                                       \
++    .hwid          = (id),                                \
++    .part          = pt,                                  \
++    .variant       = var,                                 \
++    .build_code    = bcode,                               \
++    .flash_size_kb = (fsize),                             \
++    .features      = (feat),                              \
++  }
++
+ /* The known devices table below is derived from the "nRF51 Series
+  * Compatibility Matrix" document, which can be found by searching for
+  * ATTN-51 on the Nordic Semi website:
+@@ -140,236 +254,123 @@ struct nrf51_device_spec {
+  */
+ static const struct nrf51_device_spec nrf51_known_devices_table[] = {
+ 	/* nRF51822 Devices (IC rev 1). */
+-	{
+-		.hwid		= 0x001D,
+-		.variant	= "QFAA",
+-		.build_code	= "CA/C0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0026,
+-		.variant	= "QFAB",
+-		.build_code	= "AA",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0027,
+-		.variant	= "QFAB",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0020,
+-		.variant	= "CEAA",
+-		.build_code	= "BA",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x002F,
+-		.variant	= "CEAA",
+-		.build_code	= "B0",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x001D, "51822", "QFAA", "CA/C0", 256, 0),
++	NRF51_DEVICE_DEF(0x0026, "51822", "QFAB", "AA",    128, 0),
++	NRF51_DEVICE_DEF(0x0027, "51822", "QFAB", "A0",    128, 0),
++	NRF51_DEVICE_DEF(0x0020, "51822", "CEAA", "BA",    256, 0),
++	NRF51_DEVICE_DEF(0x002F, "51822", "CEAA", "B0",    256, 0),
+ 
+ 	/* nRF51822 Devices (IC rev 2). */
+-	{
+-		.hwid		= 0x002A,
+-		.variant	= "QFAA",
+-		.build_code	= "FA0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0044,
+-		.variant	= "QFAA",
+-		.build_code	= "GC0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x003C,
+-		.variant	= "QFAA",
+-		.build_code	= "G0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0057,
+-		.variant	= "QFAA",
+-		.build_code	= "G2",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0058,
+-		.variant	= "QFAA",
+-		.build_code	= "G3",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x004C,
+-		.variant	= "QFAB",
+-		.build_code	= "B0",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0040,
+-		.variant	= "CEAA",
+-		.build_code	= "CA0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0047,
+-		.variant	= "CEAA",
+-		.build_code	= "DA0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x004D,
+-		.variant	= "CEAA",
+-		.build_code	= "D00",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x002A, "51822", "QFAA", "FA0",   256, 0),
++	NRF51_DEVICE_DEF(0x0044, "51822", "QFAA", "GC0",   256, 0),
++	NRF51_DEVICE_DEF(0x003C, "51822", "QFAA", "G0",    256, 0),
++	NRF51_DEVICE_DEF(0x0057, "51822", "QFAA", "G2",    256, 0),
++	NRF51_DEVICE_DEF(0x0058, "51822", "QFAA", "G3",    256, 0),
++	NRF51_DEVICE_DEF(0x004C, "51822", "QFAB", "B0",    128, 0),
++	NRF51_DEVICE_DEF(0x0040, "51822", "CEAA", "CA0",   256, 0),
++	NRF51_DEVICE_DEF(0x0047, "51822", "CEAA", "DA0",   256, 0),
++	NRF51_DEVICE_DEF(0x004D, "51822", "CEAA", "D00",   256, 0),
+ 
+ 	/* nRF51822 Devices (IC rev 3). */
+-	{
+-		.hwid		= 0x0072,
+-		.variant	= "QFAA",
+-		.build_code	= "H0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x007B,
+-		.variant	= "QFAB",
+-		.build_code	= "C0",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0083,
+-		.variant	= "QFAC",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0084,
+-		.variant	= "QFAC",
+-		.build_code	= "A1",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x007D,
+-		.variant	= "CDAB",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0079,
+-		.variant	= "CEAA",
+-		.build_code	= "E0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0087,
+-		.variant	= "CFAC",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x0072, "51822", "QFAA", "H0",    256, 0),
++	NRF51_DEVICE_DEF(0x007B, "51822", "QFAB", "C0",    128, 0),
++	NRF51_DEVICE_DEF(0x0083, "51822", "QFAC", "A0",    256, 0),
++	NRF51_DEVICE_DEF(0x0084, "51822", "QFAC", "A1",    256, 0),
++	NRF51_DEVICE_DEF(0x007D, "51822", "CDAB", "A0",    128, 0),
++	NRF51_DEVICE_DEF(0x0079, "51822", "CEAA", "E0",    256, 0),
++	NRF51_DEVICE_DEF(0x0087, "51822", "CFAC", "A0",    256, 0),
+ 
+ 	/* nRF51422 Devices (IC rev 1). */
+-	{
+-		.hwid		= 0x001E,
+-		.variant	= "QFAA",
+-		.build_code	= "CA",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0024,
+-		.variant	= "QFAA",
+-		.build_code	= "C0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0031,
+-		.variant	= "CEAA",
+-		.build_code	= "A0A",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x001E, "51422", "QFAA", "CA",    256, 0),
++	NRF51_DEVICE_DEF(0x0024, "51422", "QFAA", "C0",    256, 0),
++	NRF51_DEVICE_DEF(0x0031, "51422", "CEAA", "A0A",   256, 0),
+ 
+ 	/* nRF51422 Devices (IC rev 2). */
+-	{
+-		.hwid		= 0x002D,
+-		.variant	= "QFAA",
+-		.build_code	= "DAA",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x002E,
+-		.variant	= "QFAA",
+-		.build_code	= "E0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0061,
+-		.variant	= "QFAB",
+-		.build_code	= "A00",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0050,
+-		.variant	= "CEAA",
+-		.build_code	= "B0",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x002D, "51422", "QFAA", "DAA",   256, 0),
++	NRF51_DEVICE_DEF(0x002E, "51422", "QFAA", "E0",    256, 0),
++	NRF51_DEVICE_DEF(0x0061, "51422", "QFAB", "A00",   128, 0),
++	NRF51_DEVICE_DEF(0x0050, "51422", "CEAA", "B0",    256, 0),
+ 
+ 	/* nRF51422 Devices (IC rev 3). */
+-	{
+-		.hwid		= 0x0073,
+-		.variant	= "QFAA",
+-		.build_code	= "F0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x007C,
+-		.variant	= "QFAB",
+-		.build_code	= "B0",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x0085,
+-		.variant	= "QFAC",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0086,
+-		.variant	= "QFAC",
+-		.build_code	= "A1",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x007E,
+-		.variant	= "CDAB",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 128,
+-	},
+-	{
+-		.hwid		= 0x007A,
+-		.variant	= "CEAA",
+-		.build_code	= "C0",
+-		.flash_size_kb	= 256,
+-	},
+-	{
+-		.hwid		= 0x0088,
+-		.variant	= "CFAC",
+-		.build_code	= "A0",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x0073, "51422", "QFAA", "F0",    256, 0),
++	NRF51_DEVICE_DEF(0x007C, "51422", "QFAB", "B0",    128, 0),
++	NRF51_DEVICE_DEF(0x0085, "51422", "QFAC", "A0",    256, 0),
++	NRF51_DEVICE_DEF(0x0086, "51422", "QFAC", "A1",    256, 0),
++	NRF51_DEVICE_DEF(0x007E, "51422", "CDAB", "A0",    128, 0),
++	NRF51_DEVICE_DEF(0x007A, "51422", "CEAA", "C0",    256, 0),
++	NRF51_DEVICE_DEF(0x0088, "51422", "CFAC", "A0",    256, 0),
+ 
+ 	/* Some early nRF51-DK (PCA10028) & nRF51-Dongle (PCA10031) boards
+ 	   with built-in jlink seem to use engineering samples not listed
+ 	   in the nRF51 Series Compatibility Matrix V1.0. */
+-	{
+-		.hwid		= 0x0071,
+-		.variant	= "QFAC",
+-		.build_code	= "AB",
+-		.flash_size_kb	= 256,
+-	},
++	NRF51_DEVICE_DEF(0x0071, "51822", "QFAC", "AB",    256, 0),
++
++	/* Some additional device ids from the nrF51deviceids.xml file from Nordic Semi. */
++	NRF51_DEVICE_DEF(0x0015, "51x22", "QFAA", "BA",    256, 0),
++	NRF51_DEVICE_DEF(0x001C, "51x22", "CEAA", "AA",    256, 0),
++	NRF51_DEVICE_DEF(0x0021, "51822", "CEAA", "BC",    256, 0),
++	NRF51_DEVICE_DEF(0x0022, "51822", "CEAA", "B0",    256, 0),
++	NRF51_DEVICE_DEF(0x0023, "51822", "CEAA", "B0",    256, 0),
++	NRF51_DEVICE_DEF(0x0028, "51822", "QFAA", "DA",    256, 0),
++	NRF51_DEVICE_DEF(0x0029, "51822", "QFAA", "D0",    256, 0),
++	NRF51_DEVICE_DEF(0x002B, "51822", "QFAA", "FB",    256, 0),
++	NRF51_DEVICE_DEF(0x002C, "51822", "QFAA", "F0",    256, 0),
++	NRF51_DEVICE_DEF(0x0030, "51822", "CEAA", "B1",    256, 0),
++	NRF51_DEVICE_DEF(0x0032, "51422", "CEAA", "A1",    256, 0),
++	NRF51_DEVICE_DEF(0x0033, "51922", "QFAA", "AA",    256, 0),
++	NRF51_DEVICE_DEF(0x0034, "51822", "QFAA", "FC",    256, 0),
++	NRF51_DEVICE_DEF(0x003F, "51922", "QFAA", "BA",    256, 0),
++	NRF51_DEVICE_DEF(0x0041, "51822", "CEAA", "CB",    256, 0),
++	NRF51_DEVICE_DEF(0x0045, "51822", "QFAA", "FD",    256, 0),
++	NRF51_DEVICE_DEF(0x0046, "51822", "QFAA", "FU",    256, 0),
++	NRF51_DEVICE_DEF(0x0048, "51822", "CEAA", "DB",    256, 0),
++
++	/* nRF52832 Devices (IC rev 1). */
++	NRF51_DEVICE_DEF(0x00C7, "52832", "QFN48", "B00",  512, (NRF51_HW_FEATURE_PROTECT_V2 | NRF51_HW_FEATURE_CONFIG_V2)),
++
++	/* HWID for other nRF52832 */
++	NRF51_DEVICE_DEF(0x0053, "52832", "QFAA", "AA",    512, (NRF51_HW_FEATURE_PROTECT_V2 | NRF51_HW_FEATURE_CONFIG_V2)),
++	NRF51_DEVICE_DEF(0x00B8, "52832", "QFAA", "BB",    512, (NRF51_HW_FEATURE_PROTECT_V2 | NRF51_HW_FEATURE_CONFIG_V2)),
++};
++
++struct nrf51_soft_device_spec {
++	uint16_t fwid;
++	const char *device;
++	const char *hardware;
++	const char *version;
++};
++
++#define NRF51_SOFT_DEVICE_DEF(id, dev, hw, ver) \
++  {                                             \
++    .fwid     = (id),                           \
++    .device   = dev,                            \
++    .hardware = hw,                             \
++    .version  = ver,                            \
++  }
++
++static const struct nrf51_soft_device_spec nrf51_known_soft_devices_table[] = {
++	NRF51_SOFT_DEVICE_DEF(0x0001, "S110", "nRF51822", "0.6.0.alpha2"),
++	NRF51_SOFT_DEVICE_DEF(0x0001, "S210", "nRF51422", "1.0.1.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x0022, "S110", "nRF51822", "1.0.0.alpha6"),
++	NRF51_SOFT_DEVICE_DEF(0x0023, "MEFW", "nRF51822", "0.7.2"),
++	NRF51_SOFT_DEVICE_DEF(0x0024, "S210", "nRF51422", "1.2.0.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x0025, "S110", "nRF51822", "2.0.0.alpha1"),
++	NRF51_SOFT_DEVICE_DEF(0x0026, "MEFW", "nRF51822", "0.8.0"),
++	NRF51_SOFT_DEVICE_DEF(0x0027, "S110", "nRF51822", "3.0.0-beta1"),
++	NRF51_SOFT_DEVICE_DEF(0x0028, "S210", "nRF51422", "2.0.0.0"),
++	NRF51_SOFT_DEVICE_DEF(0x002A, "S110", "nRF51822", "4.0.0-2.beta"),
++	NRF51_SOFT_DEVICE_DEF(0x002C, "S110", "nRF51822", "5.0.0"),
++	NRF51_SOFT_DEVICE_DEF(0x002D, "S120", "nRF51822", "0.5.0-1.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x002E, "S110", "nRF51822", "5.1.0"),
++	NRF51_SOFT_DEVICE_DEF(0x002F, "S310", "nRF51922", "0.1.0-3.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x0030, "S310", "nRF51922", "0.1.0-4.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x0031, "S120", "nRF51822", "0.6.0-3.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x0032, "S110", "nRF51822", "5.2.0"),
++	NRF51_SOFT_DEVICE_DEF(0x0033, "S120", "nRF51822", "3xlink proto"),
++	NRF51_SOFT_DEVICE_DEF(0x003E, "S210", "nRF51422", "3.0.0-1.beta"),
++	NRF51_SOFT_DEVICE_DEF(0x0042, "S110", "nRF51822", "6.0.0-1.alpha"),
++	NRF51_SOFT_DEVICE_DEF(0x0043, "S110", "nRF51822", "5.2.1"),
++	NRF51_SOFT_DEVICE_DEF(0x0044, "S310", "nRF51922", "0.2.0-1.beta"),
+ };
+ 
+ static int nrf51_bank_is_probed(struct flash_bank *bank)
+@@ -426,6 +427,12 @@ static int nrf51_wait_for_nvmc(struct nrf51_info *chip)
+ static int nrf51_nvmc_erase_enable(struct nrf51_info *chip)
+ {
+ 	int res;
++
++	/* Make sure NVMC is ready */
++	res = nrf51_wait_for_nvmc(chip);
++	if (res != ERROR_OK)
++		return res;
++
+ 	res = target_write_u32(chip->target,
+ 			       NRF51_NVMC_CONFIG,
+ 			       NRF51_NVMC_CONFIG_EEN);
+@@ -449,6 +456,12 @@ static int nrf51_nvmc_erase_enable(struct nrf51_info *chip)
+ static int nrf51_nvmc_write_enable(struct nrf51_info *chip)
+ {
+ 	int res;
++
++	/* Make sure NVMC is ready */
++	res = nrf51_wait_for_nvmc(chip);
++	if (res != ERROR_OK)
++		return res;
++
+ 	res = target_write_u32(chip->target,
+ 			       NRF51_NVMC_CONFIG,
+ 			       NRF51_NVMC_CONFIG_WEN);
+@@ -472,6 +485,12 @@ static int nrf51_nvmc_write_enable(struct nrf51_info *chip)
+ static int nrf51_nvmc_read_only(struct nrf51_info *chip)
+ {
+ 	int res;
++
++	/* Make sure NVMC is ready */
++	res = nrf51_wait_for_nvmc(chip);
++	if (res != ERROR_OK)
++		return res;
++
+ 	res = target_write_u32(chip->target,
+ 			       NRF51_NVMC_CONFIG,
+ 			       NRF51_NVMC_CONFIG_REN);
+@@ -520,6 +539,12 @@ error:
+ 	return ERROR_FAIL;
+ }
+ 
++static int nrf51_protect_check_v2(struct flash_bank *bank)
++{
++	LOG_WARNING("nrf51_protect_check_v2() is not implemented for nRF52 series devices yet");
++	return ERROR_OK;
++}
++
+ static int nrf51_protect_check(struct flash_bank *bank)
+ {
+ 	int res;
+@@ -533,6 +558,11 @@ static int nrf51_protect_check(struct flash_bank *bank)
+ 
+ 	assert(chip != NULL);
+ 
++	/* Check if new type of protect v2 */
++        if (chip->features & NRF51_HW_FEATURE_PROTECT_V2) {
++          return nrf51_protect_check_v2(bank);
++        }
++
+ 	res = target_read_u32(chip->target, NRF51_FICR_CLENR0,
+ 			      &clenr0);
+ 	if (res != ERROR_OK) {
+@@ -551,8 +581,14 @@ static int nrf51_protect_check(struct flash_bank *bank)
+ 
+ 	for (int i = 0; i < bank->num_sectors; i++)
+ 		bank->sectors[i].is_protected =
+-			clenr0 != 0xFFFFFFFF && bank->sectors[i].offset < clenr0;
++			((clenr0 != 0xFFFFFFFF) && (bank->sectors[i].offset < clenr0)) ? 1 : 0;
++
++	return ERROR_OK;
++}
+ 
++static int nrf51_protect_v2(struct flash_bank *bank, int set, int first, int last)
++{
++	LOG_WARNING("nrf51_protect_v2() is not implemented for nRF52 series devices yet");
+ 	return ERROR_OK;
+ }
+ 
+@@ -570,6 +606,11 @@ static int nrf51_protect(struct flash_bank *bank, int set, int first, int last)
+ 	if (res != ERROR_OK)
+ 		return res;
+ 
++	/* Check if new type of protect v2 */
++        if (chip->features & NRF51_HW_FEATURE_PROTECT_V2) {
++          return nrf51_protect_v2(bank, set, first, last);
++        }
++
+ 	if (first != 0) {
+ 		LOG_ERROR("Code region 0 must start at the begining of the bank");
+ 		return ERROR_FAIL;
+@@ -630,13 +671,16 @@ static int nrf51_probe(struct flash_bank *bank)
+ 	for (size_t i = 0; i < ARRAY_SIZE(nrf51_known_devices_table); i++)
+ 		if (hwid == nrf51_known_devices_table[i].hwid) {
+ 			spec = &nrf51_known_devices_table[i];
++                        /* Set features */
++                        chip->features = spec->features;
+ 			break;
+ 		}
+ 
+ 	if (!chip->bank[0].probed && !chip->bank[1].probed) {
+ 		if (spec)
+-			LOG_INFO("nRF51822-%s(build code: %s) %ukB Flash",
+-				 spec->variant, spec->build_code, spec->flash_size_kb);
++			LOG_INFO("nRF%s-%s(build code: %s) %"PRIu32"kB Flash",
++				 spec->part, spec->variant, spec->build_code,
++				 spec->flash_size_kb);
+ 		else
+ 			LOG_WARNING("Unknown device (HWID 0x%08" PRIx32 ")", hwid);
+ 	}
+@@ -657,13 +701,15 @@ static int nrf51_probe(struct flash_bank *bank)
+ 			return res;
+ 		}
+ 
+-		if (spec && chip->code_memory_size != spec->flash_size_kb) {
+-			LOG_ERROR("Chip's reported Flash capacity does not match expected one");
++		uint32_t code_memory_size_kb = chip->code_memory_size * chip->code_page_size / 1024;
++
++		if (spec && (code_memory_size_kb != spec->flash_size_kb)) {
++			LOG_ERROR("Reported Flash capacity size %"PRIu32"kB did not match expected size %"PRIu32"kB", code_memory_size_kb, spec->flash_size_kb);
+ 			return ERROR_FAIL;
+ 		}
+ 
+-		bank->size = chip->code_memory_size * 1024;
+-		bank->num_sectors = bank->size / chip->code_page_size;
++		bank->size = chip->code_memory_size * chip->code_page_size;
++		bank->num_sectors = chip->code_memory_size;
+ 		bank->sectors = calloc(bank->num_sectors,
+ 				       sizeof((bank->sectors)[0]));
+ 		if (!bank->sectors)
+@@ -695,9 +741,10 @@ static int nrf51_probe(struct flash_bank *bank)
+ 		bank->sectors[0].offset	= 0;
+ 
+ 		/* mark as unknown */
+-		bank->sectors[0].is_erased = 0;
+-		bank->sectors[0].is_protected = 0;
++		bank->sectors[0].is_erased = -1;
++		bank->sectors[0].is_protected = -1;
+ 
++                chip->features = 0;
+ 		chip->bank[1].probed = true;
+ 	}
+ 
+@@ -742,7 +789,7 @@ static int nrf51_erase_page(struct flash_bank *bank,
+ 	int res;
+ 
+ 	LOG_DEBUG("Erasing page at 0x%"PRIx32, sector->offset);
+-	if (sector->is_protected) {
++	if (sector->is_protected == 1) {
+ 		LOG_ERROR("Cannot erase protected sector at 0x%" PRIx32, sector->offset);
+ 		return ERROR_FAIL;
+ 	}
+@@ -920,7 +967,7 @@ static int nrf51_write_pages(struct flash_bank *bank, uint32_t start, uint32_t e
+ 			return ERROR_FLASH_SECTOR_INVALID;
+ 		}
+ 
+-		if (sector->is_protected) {
++		if (sector->is_protected == 1) {
+ 			LOG_ERROR("Can't erase protected sector @ 0x%08"PRIx32, offset);
+ 			goto error;
+ 		}
+@@ -932,7 +979,8 @@ static int nrf51_write_pages(struct flash_bank *bank, uint32_t start, uint32_t e
+ 				goto error;
+ 			}
+ 		}
+-		sector->is_erased = 0;
++		/* mark as erased */
++		sector->is_erased = 1;
+ 	}
+ 
+ 	res = nrf51_nvmc_write_enable(chip);
+@@ -977,7 +1025,7 @@ static int nrf51_code_flash_write(struct flash_bank *bank,
+ 	/* Need to perform reads to fill any gaps we need to preserve in the first page,
+ 	   before the start of buffer, or in the last page, after the end of buffer */
+ 	uint32_t first_page = offset/chip->code_page_size;
+-	uint32_t last_page = DIV_ROUND_UP(offset+count, chip->code_page_size);
++	uint32_t last_page = DIV_ROUND_UP(offset + count, chip->code_page_size);
+ 
+ 	uint32_t first_page_offset = first_page * chip->code_page_size;
+ 	uint32_t last_page_offset = last_page * chip->code_page_size;
+@@ -986,7 +1034,7 @@ static int nrf51_code_flash_write(struct flash_bank *bank,
+ 		offset, offset+count, first_page_offset, last_page_offset);
+ 
+ 	uint32_t page_cnt = last_page - first_page;
+-	uint8_t buffer_to_flash[page_cnt*chip->code_page_size];
++	uint8_t buffer_to_flash[page_cnt * chip->code_page_size];
+ 
+ 	/* Fill in any space between start of first page and start of buffer */
+ 	uint32_t pre = offset - first_page_offset;
+@@ -1001,17 +1049,17 @@ static int nrf51_code_flash_write(struct flash_bank *bank,
+ 	}
+ 
+ 	/* Fill in main contents of buffer */
+-	memcpy(buffer_to_flash+pre, buffer, count);
++	memcpy(buffer_to_flash + pre, buffer, count);
+ 
+ 	/* Fill in any space between end of buffer and end of last page */
+-	uint32_t post = last_page_offset - (offset+count);
++	uint32_t post = last_page_offset - (offset + count);
+ 	if (post > 0) {
+ 		/* Retrieve the full row contents from Flash */
+ 		res = target_read_memory(bank->target,
+ 					offset + count,
+ 					1,
+ 					post,
+-					buffer_to_flash+pre+count);
++					buffer_to_flash + pre + count);
+ 		if (res != ERROR_OK)
+ 			return res;
+ 	}
+@@ -1173,6 +1221,258 @@ COMMAND_HANDLER(nrf51_handle_mass_erase_command)
+ 	return ERROR_OK;
+ }
+ 
++struct nrf51_addr_desc {
++	uint32_t address;
++	uint32_t value;
++};
++
++static struct nrf51_addr_desc nrf51_ficr[] = {
++	{ .address = NRF51_FICR_CODEPAGESIZE	},
++	{ .address = NRF51_FICR_CODESIZE	},
++	{ .address = NRF51_FICR_CLENR0		},
++	{ .address = NRF51_FICR_PPFC		},
++	{ .address = NRF51_FICR_NUMRAMBLOCK	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK0	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK1	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK2	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK3	},
++	{ .address = NRF51_FICR_CONFIGID	},
++	{ .address = NRF51_FICR_DEVICEID0	},
++	{ .address = NRF51_FICR_DEVICEID1	},
++	{ .address = NRF51_FICR_ER0		},
++	{ .address = NRF51_FICR_ER1		},
++	{ .address = NRF51_FICR_ER2		},
++	{ .address = NRF51_FICR_ER3		},
++	{ .address = NRF51_FICR_IR0		},
++	{ .address = NRF51_FICR_IR1		},
++	{ .address = NRF51_FICR_IR2		},
++	{ .address = NRF51_FICR_IR3		},
++	{ .address = NRF51_FICR_DEVICEADDRTYPE	},
++	{ .address = NRF51_FICR_DEVICEADDR0	},
++	{ .address = NRF51_FICR_DEVICEADDR1	},
++	{ .address = NRF51_FICR_OVERRIDEN	}, /* pos 23 */
++	{ .address = NRF51_FICR_NRF_1MBIT0	},
++	{ .address = NRF51_FICR_NRF_1MBIT1	},
++	{ .address = NRF51_FICR_NRF_1MBIT2	},
++	{ .address = NRF51_FICR_NRF_1MBIT3	},
++	{ .address = NRF51_FICR_NRF_1MBIT4	},
++	{ .address = NRF51_FICR_BLE_1MBIT0	},
++	{ .address = NRF51_FICR_BLE_1MBIT1	},
++	{ .address = NRF51_FICR_BLE_1MBIT2	},
++	{ .address = NRF51_FICR_BLE_1MBIT3	},
++	{ .address = NRF51_FICR_BLE_1MBIT4	},
++};
++
++static struct nrf51_addr_desc nrf51_ficr_v2[] = {
++	{ .address = NRF51_FICR_CODEPAGESIZE	},
++	{ .address = NRF51_FICR_CODESIZE	},
++	{ .address = NRF51_FICR_CLENR0		},
++	{ .address = NRF51_FICR_PPFC		},
++	{ .address = NRF51_FICR_NUMRAMBLOCK	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK0	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK1	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK2	},
++	{ .address = NRF51_FICR_SIZERAMBLOCK3	},
++	{ .address = NRF51_FICR_CONFIGID	},
++	{ .address = NRF51_FICR_DEVICEID0	},
++	{ .address = NRF51_FICR_DEVICEID1	},
++	{ .address = NRF51_FICR_ER0		},
++	{ .address = NRF51_FICR_ER1		},
++	{ .address = NRF51_FICR_ER2		},
++	{ .address = NRF51_FICR_ER3		},
++	{ .address = NRF51_FICR_IR0		},
++	{ .address = NRF51_FICR_IR1		},
++	{ .address = NRF51_FICR_IR2		},
++	{ .address = NRF51_FICR_IR3		},
++	{ .address = NRF51_FICR_DEVICEADDRTYPE	},
++	{ .address = NRF51_FICR_DEVICEADDR0	},
++	{ .address = NRF51_FICR_DEVICEADDR1	},
++        /* These registers are new */
++	{ .address = NRF51_FICR_INFO_PART	}, /* pos 23 */
++	{ .address = NRF51_FICR_INFO_VARIANT	},
++	{ .address = NRF51_FICR_INFO_PACKAGE	},
++	{ .address = NRF51_FICR_INFO_RAM	},
++	{ .address = NRF51_FICR_INFO_FLASH	},
++	{ .address = NRF51_FICR_RESERVED_1	},
++	{ .address = NRF51_FICR_RESERVED_2	},
++	{ .address = NRF51_FICR_RESERVED_3	},
++	{ .address = NRF51_FICR_TEMP_A0 	},
++	{ .address = NRF51_FICR_TEMP_A1 	},
++	{ .address = NRF51_FICR_TEMP_A2 	},
++	{ .address = NRF51_FICR_TEMP_A3 	},
++	{ .address = NRF51_FICR_TEMP_A4 	},
++	{ .address = NRF51_FICR_TEMP_A5 	},
++	{ .address = NRF51_FICR_TEMP_B0 	},
++	{ .address = NRF51_FICR_TEMP_B1 	},
++	{ .address = NRF51_FICR_TEMP_B2 	},
++	{ .address = NRF51_FICR_TEMP_B3 	},
++	{ .address = NRF51_FICR_TEMP_B4 	},
++	{ .address = NRF51_FICR_TEMP_B5 	},
++	{ .address = NRF51_FICR_TEMP_T0 	},
++	{ .address = NRF51_FICR_TEMP_T1 	},
++	{ .address = NRF51_FICR_TEMP_T2 	},
++	{ .address = NRF51_FICR_TEMP_T3 	},
++	{ .address = NRF51_FICR_TEMP_T4 	},
++	{ .address = NRF51_FICR_NFC_TAGHEADER0	}, /* pos 48 */
++	{ .address = NRF51_FICR_NFC_TAGHEADER1	},
++	{ .address = NRF51_FICR_NFC_TAGHEADER2	},
++	{ .address = NRF51_FICR_NFC_TAGHEADER3	},
++};
++
++static struct nrf51_addr_desc nrf51_uicr[] = {
++	{ .address = NRF51_UICR_CLENR0		},
++	{ .address = NRF51_UICR_RBPCONF		},
++	{ .address = NRF51_UICR_XTALFREQ	},
++	{ .address = NRF51_UICR_FWID		},
++};
++
++static struct nrf51_addr_desc nrf51_uicr_v2[] = {
++	{ .address = NRF51_UICR_NRFFW_0		},
++	{ .address = NRF51_UICR_NRFFW_1		},
++	{ .address = NRF51_UICR_NRFFW_2		},
++	{ .address = NRF51_UICR_NRFFW_3		},
++	{ .address = NRF51_UICR_NRFFW_4		},
++	{ .address = NRF51_UICR_NRFFW_5		},
++	{ .address = NRF51_UICR_NRFFW_6		},
++	{ .address = NRF51_UICR_NRFFW_7		},
++	{ .address = NRF51_UICR_NRFFW_8		},
++	{ .address = NRF51_UICR_NRFFW_9		},
++	{ .address = NRF51_UICR_NRFFW_10	},
++	{ .address = NRF51_UICR_NRFFW_11	},
++	{ .address = NRF51_UICR_NRFFW_12	},
++	{ .address = NRF51_UICR_NRFFW_13	},
++	{ .address = NRF51_UICR_NRFFW_14	},
++	{ .address = NRF51_UICR_NRFHW_0		}, /* pos 15 */
++	{ .address = NRF51_UICR_NRFHW_1		},
++	{ .address = NRF51_UICR_NRFHW_2		},
++	{ .address = NRF51_UICR_NRFHW_3		},
++	{ .address = NRF51_UICR_NRFHW_4		},
++	{ .address = NRF51_UICR_NRFHW_5		},
++	{ .address = NRF51_UICR_NRFHW_6		},
++	{ .address = NRF51_UICR_NRFHW_7		},
++	{ .address = NRF51_UICR_NRFHW_8		},
++	{ .address = NRF51_UICR_NRFHW_9		},
++	{ .address = NRF51_UICR_NRFHW_10	},
++	{ .address = NRF51_UICR_NRFHW_11	},
++	{ .address = NRF51_UICR_CUSTOMER_0	}, /* pos 27 */
++	{ .address = NRF51_UICR_CUSTOMER_1	},
++	{ .address = NRF51_UICR_CUSTOMER_2	},
++	{ .address = NRF51_UICR_CUSTOMER_3	},
++	{ .address = NRF51_UICR_CUSTOMER_4	},
++	{ .address = NRF51_UICR_CUSTOMER_5	},
++	{ .address = NRF51_UICR_CUSTOMER_6	},
++	{ .address = NRF51_UICR_CUSTOMER_7	},
++	{ .address = NRF51_UICR_CUSTOMER_8	},
++	{ .address = NRF51_UICR_CUSTOMER_9	},
++	{ .address = NRF51_UICR_CUSTOMER_10	},
++	{ .address = NRF51_UICR_CUSTOMER_11	},
++	{ .address = NRF51_UICR_CUSTOMER_12	},
++	{ .address = NRF51_UICR_CUSTOMER_13	},
++	{ .address = NRF51_UICR_CUSTOMER_14	},
++	{ .address = NRF51_UICR_CUSTOMER_15	},
++	{ .address = NRF51_UICR_CUSTOMER_16	},
++	{ .address = NRF51_UICR_CUSTOMER_17	},
++	{ .address = NRF51_UICR_CUSTOMER_18	},
++	{ .address = NRF51_UICR_CUSTOMER_19	},
++	{ .address = NRF51_UICR_CUSTOMER_20	},
++	{ .address = NRF51_UICR_CUSTOMER_21	},
++	{ .address = NRF51_UICR_CUSTOMER_22	},
++	{ .address = NRF51_UICR_CUSTOMER_23	},
++	{ .address = NRF51_UICR_CUSTOMER_24	},
++	{ .address = NRF51_UICR_CUSTOMER_25	},
++	{ .address = NRF51_UICR_CUSTOMER_26	},
++	{ .address = NRF51_UICR_CUSTOMER_27	},
++	{ .address = NRF51_UICR_CUSTOMER_28	},
++	{ .address = NRF51_UICR_CUSTOMER_29	},
++	{ .address = NRF51_UICR_CUSTOMER_30	},
++	{ .address = NRF51_UICR_CUSTOMER_31	},
++	{ .address = NRF51_UICR_PSELRESET_0	}, /* pos 59 */
++	{ .address = NRF51_UICR_PSELRESET_1	},
++	{ .address = NRF51_UICR_APPROTECT	},
++	{ .address = NRF51_UICR_NFCPINS 	},
++};
++
++static int nrf51_info_v2(struct target *target, struct flash_bank *bank, char *buf, int buf_size)
++{
++	int res;
++
++	for (size_t i = 0; i < ARRAY_SIZE(nrf51_ficr_v2); i++) {
++		res = target_read_u32(target, nrf51_ficr_v2[i].address,
++				      &nrf51_ficr_v2[i].value);
++		if (res != ERROR_OK) {
++			LOG_ERROR("Couldn't read %" PRIx32, nrf51_ficr_v2[i].address);
++			return res;
++		}
++	}
++
++	for (size_t i = 0; i < ARRAY_SIZE(nrf51_uicr_v2); i++) {
++		res = target_read_u32(target, nrf51_uicr_v2[i].address,
++				      &nrf51_uicr_v2[i].value);
++		if (res != ERROR_OK) {
++			LOG_ERROR("Couldn't read %" PRIx32, nrf51_uicr_v2[i].address);
++			return res;
++		}
++	}
++
++	snprintf(buf, buf_size,
++		 "\n[factory information control block]\n\n"
++		 "code page size: %"PRIu32"B\n"
++		 "code memory size: %"PRIu32"kB\n"
++		 "code region 0 size: %"PRIu32"kB\n"
++		 "pre-programmed code: %s\n"
++		 "number of ram blocks: %"PRIu32"\n"
++		 "ram block 0 size: %"PRIu32"B\n"
++		 "ram block 1 size: %"PRIu32"B\n"
++		 "ram block 2 size: %"PRIu32"B\n"
++		 "ram block 3 size: %"PRIu32 "B\n"
++		 "config id: %" PRIx32 "\n"
++		 "device id: 0x%"PRIx32"%08"PRIx32"\n"
++		 "encryption root: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"\n"
++		 "identity root: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"\n"
++		 "device address type: 0x%"PRIx32"\n"
++		 "device address: 0x%"PRIx32"%08"PRIx32"\n"
++		 "info.part: 0x%"PRIx32"\n"
++		 "info.variant: 0x%"PRIx32"\n"
++		 "info.package: 0x%"PRIx32"\n"
++		 "info.ram: 0x%"PRIx32"\n"
++		 "info.flash: 0x%"PRIx32"\n"
++		 "nfc tag header: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"\n"
++		 "\n[user information control block]\n\n"
++		 "pselreset 0: 0x%"PRIx32"\n"
++		 "pselreset 1: 0x%"PRIx32"\n"
++		 "approtect: 0x%"PRIx32"\n"
++		 "nfcpins: 0x%"PRIx32"\n",
++		 nrf51_ficr_v2[0].value,
++		 (nrf51_ficr_v2[1].value * nrf51_ficr_v2[0].value) / 1024,
++		 (nrf51_ficr_v2[2].value == 0xFFFFFFFF) ? 0 : nrf51_ficr_v2[2].value / 1024,
++		 ((nrf51_ficr_v2[3].value & 0xFF) == 0x00) ? "present" : "not present",
++		 nrf51_ficr_v2[4].value,
++		 nrf51_ficr_v2[5].value,
++		 (nrf51_ficr_v2[6].value == 0xFFFFFFFF) ? 0 : nrf51_ficr_v2[6].value,
++		 (nrf51_ficr_v2[7].value == 0xFFFFFFFF) ? 0 : nrf51_ficr_v2[7].value,
++		 (nrf51_ficr_v2[8].value == 0xFFFFFFFF) ? 0 : nrf51_ficr_v2[8].value,
++		 nrf51_ficr_v2[9].value,
++		 nrf51_ficr_v2[10].value, nrf51_ficr_v2[11].value,
++		 nrf51_ficr_v2[12].value, nrf51_ficr_v2[13].value, nrf51_ficr_v2[14].value, nrf51_ficr_v2[15].value,
++		 nrf51_ficr_v2[16].value, nrf51_ficr_v2[17].value, nrf51_ficr_v2[18].value, nrf51_ficr_v2[19].value,
++		 nrf51_ficr_v2[20].value,
++		 nrf51_ficr_v2[21].value, nrf51_ficr_v2[22].value,
++		 nrf51_ficr_v2[23].value,
++		 nrf51_ficr_v2[24].value,
++		 nrf51_ficr_v2[25].value,
++		 nrf51_ficr_v2[26].value,
++		 nrf51_ficr_v2[27].value,
++                 /* NFC TAGHEADER */
++		 nrf51_ficr_v2[48].value, nrf51_ficr_v2[49].value, nrf51_ficr_v2[50].value, nrf51_ficr_v2[51].value,
++                 /* UICR */
++		 nrf51_uicr_v2[59].value,
++		 nrf51_uicr_v2[60].value,
++		 nrf51_uicr_v2[61].value,
++		 nrf51_uicr_v2[62].value);
++
++	return ERROR_OK;
++}
++
+ static int nrf51_info(struct flash_bank *bank, char *buf, int buf_size)
+ {
+ 	int res;
+@@ -1183,65 +1483,25 @@ static int nrf51_info(struct flash_bank *bank, char *buf, int buf_size)
+ 	if (res != ERROR_OK)
+ 		return res;
+ 
+-	static struct {
+-		const uint32_t address;
+-		uint32_t value;
+-	} ficr[] = {
+-		{ .address = NRF51_FICR_CODEPAGESIZE	},
+-		{ .address = NRF51_FICR_CODESIZE	},
+-		{ .address = NRF51_FICR_CLENR0		},
+-		{ .address = NRF51_FICR_PPFC		},
+-		{ .address = NRF51_FICR_NUMRAMBLOCK	},
+-		{ .address = NRF51_FICR_SIZERAMBLOCK0	},
+-		{ .address = NRF51_FICR_SIZERAMBLOCK1	},
+-		{ .address = NRF51_FICR_SIZERAMBLOCK2	},
+-		{ .address = NRF51_FICR_SIZERAMBLOCK3	},
+-		{ .address = NRF51_FICR_CONFIGID	},
+-		{ .address = NRF51_FICR_DEVICEID0	},
+-		{ .address = NRF51_FICR_DEVICEID1	},
+-		{ .address = NRF51_FICR_ER0		},
+-		{ .address = NRF51_FICR_ER1		},
+-		{ .address = NRF51_FICR_ER2		},
+-		{ .address = NRF51_FICR_ER3		},
+-		{ .address = NRF51_FICR_IR0		},
+-		{ .address = NRF51_FICR_IR1		},
+-		{ .address = NRF51_FICR_IR2		},
+-		{ .address = NRF51_FICR_IR3		},
+-		{ .address = NRF51_FICR_DEVICEADDRTYPE	},
+-		{ .address = NRF51_FICR_DEVICEADDR0	},
+-		{ .address = NRF51_FICR_DEVICEADDR1	},
+-		{ .address = NRF51_FICR_OVERRIDEN	},
+-		{ .address = NRF51_FICR_NRF_1MBIT0	},
+-		{ .address = NRF51_FICR_NRF_1MBIT1	},
+-		{ .address = NRF51_FICR_NRF_1MBIT2	},
+-		{ .address = NRF51_FICR_NRF_1MBIT3	},
+-		{ .address = NRF51_FICR_NRF_1MBIT4	},
+-		{ .address = NRF51_FICR_BLE_1MBIT0	},
+-		{ .address = NRF51_FICR_BLE_1MBIT1	},
+-		{ .address = NRF51_FICR_BLE_1MBIT2	},
+-		{ .address = NRF51_FICR_BLE_1MBIT3	},
+-		{ .address = NRF51_FICR_BLE_1MBIT4	},
+-	}, uicr[] = {
+-		{ .address = NRF51_UICR_CLENR0,		},
+-		{ .address = NRF51_UICR_RBPCONF		},
+-		{ .address = NRF51_UICR_XTALFREQ	},
+-		{ .address = NRF51_UICR_FWID		},
+-	};
+-
+-	for (size_t i = 0; i < ARRAY_SIZE(ficr); i++) {
+-		res = target_read_u32(chip->target, ficr[i].address,
+-				      &ficr[i].value);
++	/* Check if new type of information configuration v2 */
++        if (chip->features & NRF51_HW_FEATURE_CONFIG_V2) {
++          return nrf51_info_v2(chip->target, bank, buf, buf_size);
++        }
++
++	for (size_t i = 0; i < ARRAY_SIZE(nrf51_ficr); i++) {
++		res = target_read_u32(chip->target, nrf51_ficr[i].address,
++				      &nrf51_ficr[i].value);
+ 		if (res != ERROR_OK) {
+-			LOG_ERROR("Couldn't read %" PRIx32, ficr[i].address);
++			LOG_ERROR("Couldn't read %" PRIx32, nrf51_ficr[i].address);
+ 			return res;
+ 		}
+ 	}
+ 
+-	for (size_t i = 0; i < ARRAY_SIZE(uicr); i++) {
+-		res = target_read_u32(chip->target, uicr[i].address,
+-				      &uicr[i].value);
++	for (size_t i = 0; i < ARRAY_SIZE(nrf51_uicr); i++) {
++		res = target_read_u32(chip->target, nrf51_uicr[i].address,
++				      &nrf51_uicr[i].value);
+ 		if (res != ERROR_OK) {
+-			LOG_ERROR("Couldn't read %" PRIx32, uicr[i].address);
++			LOG_ERROR("Couldn't read %" PRIx32, nrf51_uicr[i].address);
+ 			return res;
+ 		}
+ 	}
+@@ -1271,28 +1531,29 @@ static int nrf51_info(struct flash_bank *bank, char *buf, int buf_size)
+ 		 "read back protection configuration: %"PRIx32"\n"
+ 		 "reset value for XTALFREQ: %"PRIx32"\n"
+ 		 "firmware id: 0x%04"PRIx32,
+-		 ficr[0].value,
+-		 ficr[1].value,
+-		 (ficr[2].value == 0xFFFFFFFF) ? 0 : ficr[2].value / 1024,
+-		 ((ficr[3].value & 0xFF) == 0x00) ? "present" : "not present",
+-		 ficr[4].value,
+-		 ficr[5].value,
+-		 (ficr[6].value == 0xFFFFFFFF) ? 0 : ficr[6].value,
+-		 (ficr[7].value == 0xFFFFFFFF) ? 0 : ficr[7].value,
+-		 (ficr[8].value == 0xFFFFFFFF) ? 0 : ficr[8].value,
+-		 ficr[9].value,
+-		 ficr[10].value, ficr[11].value,
+-		 ficr[12].value, ficr[13].value, ficr[14].value, ficr[15].value,
+-		 ficr[16].value, ficr[17].value, ficr[18].value, ficr[19].value,
+-		 ficr[20].value,
+-		 ficr[21].value, ficr[22].value,
+-		 ficr[23].value,
+-		 ficr[24].value, ficr[25].value, ficr[26].value, ficr[27].value, ficr[28].value,
+-		 ficr[29].value, ficr[30].value, ficr[31].value, ficr[32].value, ficr[33].value,
+-		 (uicr[0].value == 0xFFFFFFFF) ? 0 : uicr[0].value / 1024,
+-		 uicr[1].value & 0xFFFF,
+-		 uicr[2].value & 0xFF,
+-		 uicr[3].value & 0xFFFF);
++		 nrf51_ficr[0].value,
++		 (nrf51_ficr[1].value * nrf51_ficr[0].value) / 1024,
++		 (nrf51_ficr[2].value == 0xFFFFFFFF) ? 0 : nrf51_ficr[2].value / 1024,
++		 ((nrf51_ficr[3].value & 0xFF) == 0x00) ? "present" : "not present",
++		 nrf51_ficr[4].value,
++		 nrf51_ficr[5].value,
++		 (nrf51_ficr[6].value == 0xFFFFFFFF) ? 0 : nrf51_ficr[6].value,
++		 (nrf51_ficr[7].value == 0xFFFFFFFF) ? 0 : nrf51_ficr[7].value,
++		 (nrf51_ficr[8].value == 0xFFFFFFFF) ? 0 : nrf51_ficr[8].value,
++		 nrf51_ficr[9].value,
++		 nrf51_ficr[10].value, nrf51_ficr[11].value,
++		 nrf51_ficr[12].value, nrf51_ficr[13].value, nrf51_ficr[14].value, nrf51_ficr[15].value,
++		 nrf51_ficr[16].value, nrf51_ficr[17].value, nrf51_ficr[18].value, nrf51_ficr[19].value,
++		 nrf51_ficr[20].value,
++		 nrf51_ficr[21].value, nrf51_ficr[22].value,
++		 nrf51_ficr[23].value,
++		 nrf51_ficr[24].value, nrf51_ficr[25].value, nrf51_ficr[26].value, nrf51_ficr[27].value, nrf51_ficr[28].value,
++		 nrf51_ficr[29].value, nrf51_ficr[30].value, nrf51_ficr[31].value, nrf51_ficr[32].value, nrf51_ficr[33].value,
++		 /* UICR */
++		 (nrf51_uicr[0].value == 0xFFFFFFFF) ? 0 : nrf51_uicr[0].value / 1024,
++		 nrf51_uicr[1].value & 0xFFFF,
++		 nrf51_uicr[2].value & 0xFF,
++		 nrf51_uicr[3].value & 0xFFFF);
+ 
+ 	return ERROR_OK;
+ }
+diff --git a/tcl/target/nrf52.cfg b/tcl/target/nrf52.cfg
+index c1cbf1a..586f13a 100644
+--- a/tcl/target/nrf52.cfg
++++ b/tcl/target/nrf52.cfg
+@@ -10,6 +10,14 @@ if { [info exists CHIPNAME] } {
+ 	set _CHIPNAME nrf52
+ }
+ 
++# Work-area is a space in RAM used for flash programming
++# By default use 16kB
++if { [info exists WORKAREASIZE] } {
++   set _WORKAREASIZE $WORKAREASIZE
++} else {
++   set _WORKAREASIZE 0x4000
++}
++
+ if { [info exists CPUTAPID] } {
+ 	set _CPUTAPID $CPUTAPID
+ } else {
+@@ -21,8 +29,15 @@ swj_newdap $_CHIPNAME cpu -expected-id $_CPUTAPID
+ set _TARGETNAME $_CHIPNAME.cpu
+ target create $_TARGETNAME cortex_m -chain-position $_TARGETNAME
+ 
+-adapter_khz 10000
++$_TARGETNAME configure -work-area-phys 0x20000000 -work-area-size $_WORKAREASIZE -work-area-backup 0
+ 
+ if { ![using_hla] } {
+ 	cortex_m reset_config sysresetreq
+ }
++
++flash bank $_CHIPNAME.flash nrf51 0x00000000 0 1 1 $_TARGETNAME
++flash bank $_CHIPNAME.uicr nrf51 0x10001000 0 1 1 $_TARGETNAME
++
++adapter_khz 10000
++
++$_TARGETNAME configure -event reset-end {}
