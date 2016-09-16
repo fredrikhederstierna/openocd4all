@@ -17,6 +17,10 @@
 # Commit id 81631e49a608be93af0a473ec3f099cb556a2c8a.
 # Added patches for TI cc13xx from gerrit.
 #
+# Version 2.
+# Added patches for Nordic Semi NRF52.
+# Mixed realpath not available on all Linux dists.
+#
 # Note for CMSIS-DAP you nedd libhidapi-dev
 # you also need libusb1.0-0-dev, libusb-dev and libftdi-dev/dbg
 
@@ -49,7 +53,10 @@ make
 # dir up
 cd ..
 
-OPENOCD_DIR_CANONICAL=$(realpath "$OPENOCD_DIR")
+# To get absolute path on some platforms have realpath, some readlink
+# http://stackoverflow.com/questions/284662/how-do-you-normalize-a-file-path-in-bash
+#OPENOCD_DIR_CANONICAL=$(realpath "$OPENOCD_DIR")
+OPENOCD_DIR_CANONICAL=$(readlink -e "$OPENOCD_DIR")
 OPENOCD_FOR_ALL=oo4all
 
 # create start script
@@ -58,4 +65,4 @@ echo "$OPENOCD_DIR_CANONICAL/src/openocd -s $OPENOCD_DIR_CANONICAL -s $OPENOCD_D
 chmod a+x $OPENOCD_FOR_ALL
 
 # done
-echo "Start openocd with: $OPENOCD_FOR_ALL -f your_script.cfg"
+echo "Start openocd with: sudo $OPENOCD_FOR_ALL -f your_script.cfg"
