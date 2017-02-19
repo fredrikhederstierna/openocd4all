@@ -21,14 +21,36 @@
 # Added patches for Nordic Semi NRF52.
 # Mixed realpath not available on all Linux dists.
 #
+# Version 3.
+# Added patches for Energy Micro/Silicon Labs EFR32.
+# Update git repo paths with mirror.
+#
+# You need to have automake package installed to build.
+#   sudo apt-get install automake
+#
+# You also need libusb-1.0-0-dev, libusb-dev and libftdi-dev/dbg
+#   sudo apt-get install libusb-1.0-0-dev
+#   sudo apt-get install libusb-1.0-0-dbg
+#   sudo apt-get install libusb-dev
+#   sudo apt-get install libftdi1
+#   sudo apt-get install libftdi-dev
+#   sudo apt-get install libftdi1-dev
+#   sudo apt-get install libftdi1-dbg
+#   sudo apt-get install libftdi1-2
+#   sudo apt-get install libftdi1-2-dbg
+#
 # Note for CMSIS-DAP you nedd libhidapi-dev
-# you also need libusb1.0-0-dev, libusb-dev and libftdi-dev/dbg
+#   sudo apt-get install libhidapi-dev
 
 OPENOCD_DIR=.openocd
 
 # checkout openocd master git repository
+# links taken from http://openocd.org/repos/
 rm -rf $OPENOCD_DIR
-git clone git://git.code.sf.net/p/openocd/code $OPENOCD_DIR
+# official git
+#git clone git://git.code.sf.net/p/openocd/code $OPENOCD_DIR
+# mirror if behind firewall, try HTTP
+git clone http://repo.or.cz/r/openocd.git $OPENOCD_DIR
 
 # enter openocd source dir
 cd $OPENOCD_DIR
@@ -42,6 +64,8 @@ patch -p1 -i ../patches/8eeaaee5.diff
 # patches from zylin git gerrit to get extra Nordic semi nrf52 support
 patch -p1 -i ../patches/688f0ad9.diff
 patch -p1 -i ../patches/nrf52.diff
+# patche to get extra Energy Micro/Silicon Labs EFR32 support
+patch -p1 -i ../patches/efr32.diff
 
 # configure openocd, enable all available dongles and some verbose debug
 ./bootstrap
