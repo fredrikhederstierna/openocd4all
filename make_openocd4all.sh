@@ -28,6 +28,9 @@
 # You need to have automake package installed to build.
 #   sudo apt-get install automake
 #
+# For Ubuntu 17.04 and possibly others you need libtool-bin.
+#   sudo apt-get install libtool-bin
+#
 # You also need libusb-1.0-0-dev, libusb-dev and libftdi-dev/dbg
 #   sudo apt-get install libusb-1.0-0-dev
 #   sudo apt-get install libusb-1.0-0-dbg
