@@ -66,7 +66,8 @@ cd $OPENOCD_DIR
 
 # Checkout known working commit
 #git checkout -q 81631e49a608be93af0a473ec3f099cb556a2c8a
-git checkout master
+git checkout -q c2b2a7a3b84913465420ae7fa0394304943cf035
+#git checkout master
 
 # Apply patches
 # patches from zylin git gerrit to get extra TI cc13xx support
