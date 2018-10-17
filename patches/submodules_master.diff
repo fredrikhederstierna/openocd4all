@@ -1,0 +1,13 @@
+diff --git a/bootstrap b/bootstrap
+index ad5e7bdd..27386753 100755
+--- a/bootstrap
++++ b/bootstrap
+@@ -36,7 +36,7 @@ if [ -n "$SKIP_SUBMODULE" ]; then
+ else
+     echo "Setting up submodules"
+     git submodule init
+-    git submodule update
++    git submodule update --remote --recursive
+ fi
+ 
+ if [ -x src/jtag/drivers/libjaylink/autogen.sh ]; then

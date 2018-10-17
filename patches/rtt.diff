@@ -1,0 +1,1453 @@
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 07981aa6..781c1e74 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -53,7 +53,8 @@ endif
+ 	%D%/target/libtarget.la \
+ 	%D%/server/libserver.la \
+ 	%D%/rtos/librtos.la \
+-	%D%/helper/libhelper.la
++	%D%/helper/libhelper.la \
++	%D%/rtt/librtt.la
+ 
+ BIN2C = $(srcdir)/%D%/helper/bin2char.sh
+ 
+@@ -83,3 +84,4 @@ include %D%/rtos/Makefile.am
+ include %D%/server/Makefile.am
+ include %D%/flash/Makefile.am
+ include %D%/pld/Makefile.am
++include %D%/rtt/Makefile.am
+diff --git a/src/openocd.c b/src/openocd.c
+index f084dd45..2876c28b 100644
+--- a/src/openocd.c
++++ b/src/openocd.c
+@@ -39,9 +39,11 @@
+ #include <flash/mflash.h>
+ #include <target/arm_cti.h>
+ #include <target/arm_adi_v5.h>
++#include <rtt/rtt.h>
+ 
+ #include <server/server.h>
+ #include <server/gdb_server.h>
++#include <server/rtt_server.h>
+ 
+ #ifdef HAVE_STRINGS_H
+ #include <strings.h>
+@@ -251,6 +253,8 @@ struct command_context *setup_command_handler(Jim_Interp *interp)
+ 		&server_register_commands,
+ 		&gdb_register_commands,
+ 		&log_register_commands,
++		&rtt_register_commands,
++		&rtt_server_register_commands,
+ 		&transport_register_commands,
+ 		&interface_register_commands,
+ 		&target_register_commands,
+@@ -343,6 +347,9 @@ int openocd_main(int argc, char *argv[])
+ 	if (ioutil_init(cmd_ctx) != ERROR_OK)
+ 		return EXIT_FAILURE;
+ 
++	if (rtt_init() != ERROR_OK)
++		return EXIT_FAILURE;
++
+ 	LOG_OUTPUT("For bug reports, read\n\t"
+ 		"http://openocd.org/doc/doxygen/bugs.html"
+ 		"\n");
+@@ -368,6 +375,8 @@ int openocd_main(int argc, char *argv[])
+ 	/* Shutdown commandline interface */
+ 	command_exit(cmd_ctx);
+ 
++	rtt_exit();
++
+ 	free_config();
+ 
+ 	if (ERROR_FAIL == ret)
+diff --git a/src/rtt/Makefile.am b/src/rtt/Makefile.am
+new file mode 100644
+index 00000000..1a3e1982
+--- /dev/null
++++ b/src/rtt/Makefile.am
+@@ -0,0 +1,2 @@
++noinst_LTLIBRARIES += %D%/librtt.la
++%C%_librtt_la_SOURCES = %D%/rtt.c %D%/rtt.h
+diff --git a/src/rtt/rtt.c b/src/rtt/rtt.c
+new file mode 100644
+index 00000000..ab9e0a9d
+--- /dev/null
++++ b/src/rtt/rtt.c
+@@ -0,0 +1,521 @@
++/*
++ * Copyright (C) 2016-2017 by Marc Schink
++ * openocd-dev@marcschink.de
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <stdint.h>
++#include <stdbool.h>
++#include <string.h>
++
++#include <helper/log.h>
++#include <helper/list.h>
++#include <target/target.h>
++#include <target/rtt.h>
++
++#include "rtt.h"
++
++static struct rtt_source global_source;
++static struct rtt_control global_ctrl;
++static struct target *global_target;
++static target_addr_t global_addr;
++static uint32_t global_length;
++static char global_id[RTT_MAX_CB_ID_LENGTH];
++static size_t global_id_length;
++static bool global_configured;
++static bool global_started;
++static bool global_changed;
++static bool global_found_cb;
++
++static struct rtt_sink_list **global_sink_list;
++static size_t global_sink_list_length;
++
++int rtt_init(void)
++{
++	global_sink_list_length = 1;
++	global_sink_list = calloc(global_sink_list_length,
++		sizeof(struct rtt_sink_list *));
++
++	if (!global_sink_list)
++		return ERROR_FAIL;
++
++	global_sink_list[0] = NULL;
++	global_started = false;
++
++	return ERROR_OK;
++}
++
++int rtt_exit(void)
++{
++	free(global_sink_list);
++
++	return ERROR_OK;
++}
++
++static int read_channel_callback(void *user_data)
++{
++	int ret;
++
++	ret = global_source.read(&global_ctrl, global_sink_list,
++		global_sink_list_length, global_target, NULL);
++
++	if (ret != ERROR_OK) {
++		target_unregister_timer_callback(&read_channel_callback, NULL);
++		global_source.stop(global_target, NULL);
++		return ret;
++	}
++
++	return ERROR_OK;
++}
++
++int rtt_register_source(const struct rtt_source source, struct target *target)
++{
++	global_source = source;
++	global_target = target;
++
++	return ERROR_OK;
++}
++
++int rtt_start(void)
++{
++	int ret;
++	target_addr_t addr = global_addr;
++
++	if (global_started) {
++		LOG_INFO("RTT already started");
++		return ERROR_OK;
++	}
++
++	if (!global_found_cb || global_changed) {
++		global_source.find_cb(&addr, global_length, global_id,
++			global_id_length, &global_found_cb, global_target, NULL);
++
++		global_changed = false;
++
++		if (global_found_cb) {
++			LOG_INFO("RTT control block found at 0x%" TARGET_PRIxADDR, addr);
++			global_ctrl.address = addr;
++		} else {
++			LOG_INFO("No RTT control block found");
++			return ERROR_OK;
++		}
++	}
++
++	ret = global_source.read_cb(global_ctrl.address, &global_ctrl,
++		global_target, NULL);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	ret = global_source.start(&global_ctrl, global_target, NULL);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	target_register_timer_callback(&read_channel_callback, 100, 1, NULL);
++	global_started = true;
++
++	return ERROR_OK;
++}
++
++int rtt_stop(void)
++{
++	int ret;
++
++	if (!global_configured) {
++		LOG_ERROR("RTT is not configured");
++		return ERROR_FAIL;
++	}
++
++	target_unregister_timer_callback(&read_channel_callback, NULL);
++	global_started = false;
++
++	ret = global_source.stop(global_target, NULL);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	return ERROR_OK;
++}
++
++static int adjust_sink_list(size_t length)
++{
++	size_t i;
++	struct rtt_sink_list **tmp;
++
++	if (length <= global_sink_list_length)
++		return ERROR_OK;
++
++	tmp = realloc(global_sink_list, sizeof(struct rtt_sink_list *) * length);
++
++	if (!tmp)
++		return ERROR_FAIL;
++
++	for (i = global_sink_list_length; i < length; i++)
++		tmp[i] = NULL;
++
++	global_sink_list = tmp;
++	global_sink_list_length = length;
++
++	return ERROR_OK;
++}
++
++int rtt_register_sink(unsigned int channel, rtt_sink_read read,
++		void *user_data)
++{
++	struct rtt_sink_list *tmp;
++
++	if (channel >= global_sink_list_length) {
++		if (adjust_sink_list(channel + 1) != ERROR_OK)
++			return ERROR_FAIL;
++	}
++
++	LOG_DEBUG("Registering sink for RTT channel %u", channel);
++
++	tmp = malloc(sizeof(struct rtt_sink_list));
++
++	if (!tmp)
++		return ERROR_FAIL;
++
++	tmp->read = read;
++	tmp->user_data = user_data;
++	tmp->next = global_sink_list[channel];
++
++	global_sink_list[channel] = tmp;
++
++	return ERROR_OK;
++}
++
++int rtt_unregister_sink(unsigned int channel, rtt_sink_read read,
++		void *user_data)
++{
++	struct rtt_sink_list *sink;
++	struct rtt_sink_list *prev_sink;
++
++	LOG_DEBUG("Unregistering sink for RTT channel %u", channel);
++
++	if (channel >= global_sink_list_length)
++		return ERROR_FAIL;
++
++	prev_sink = global_sink_list[channel];
++
++	for (sink = global_sink_list[channel]; sink; prev_sink = sink,
++			sink = sink->next) {
++		if (sink->read == read && sink->user_data == user_data) {
++
++			if (sink == global_sink_list[channel])
++				global_sink_list[channel] = sink->next;
++			else
++				prev_sink->next = sink->next;
++
++			free(sink);
++
++			return ERROR_OK;
++		}
++	}
++
++	return ERROR_OK;
++}
++
++int rtt_write_channel(unsigned int channel, const uint8_t *buffer,
++		size_t *length)
++{
++	if (!global_source.write)
++		return ERROR_FAIL;
++
++	if (channel >= global_ctrl.num_up_buffers) {
++		LOG_WARNING("Down-channel %u is not available", channel);
++		return ERROR_OK;
++	}
++
++	return global_source.write(&global_ctrl, channel, buffer, length,
++		global_target, NULL);
++}
++
++COMMAND_HANDLER(handle_rtt_setup_command)
++{
++	target_addr_t addr;
++	uint32_t length;
++	struct rtt_source source;
++
++	if (CMD_ARGC != 3)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++
++	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[0], addr);
++	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[1], length);
++
++	global_id_length = strlen(CMD_ARGV[2]);
++
++	if (!global_id_length || global_id_length > RTT_MAX_CB_ID_LENGTH) {
++		LOG_ERROR("Invalid RTT control block ID");
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	}
++
++	source.find_cb = &target_rtt_find_control_block;
++	source.read_cb = &target_rtt_read_control_block;
++	source.start = &target_rtt_start;
++	source.stop = &target_rtt_stop;
++	source.read = &target_rtt_read_callback;
++	source.write = &target_rtt_write_callback;
++	source.read_buffer_info = &target_rtt_read_buffer_info;
++
++	rtt_register_source(source, get_current_target(CMD_CTX));
++
++	global_addr = addr;
++	global_length = length;
++	memcpy(global_id, CMD_ARGV[2], global_id_length);
++	global_changed = true;
++	global_configured = true;
++
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(handle_rtt_start_command)
++{
++	int ret;
++
++	if (CMD_ARGC > 0)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++
++	if (global_started) {
++		LOG_INFO("RTT already started");
++		return ERROR_OK;
++	}
++
++	if (!global_configured) {
++		LOG_ERROR("RTT is not configured");
++		return ERROR_FAIL;
++	}
++
++	ret = rtt_start();
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(handle_rtt_stop_command)
++{
++	int ret;
++
++	if (CMD_ARGC > 0)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++
++	ret = rtt_stop();
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(handle_rtt_channels_command)
++{
++	int ret;
++	size_t i;
++	char channel_name[32];
++	struct rtt_buffer_info info;
++
++	if (!global_found_cb) {
++		LOG_ERROR("RTT control block not available");
++		return ERROR_FAIL;
++	}
++
++	command_print(CMD_CTX, "Channels: up=%u, down=%u",
++		global_ctrl.num_up_buffers, global_ctrl.num_down_buffers);
++
++	LOG_INFO("Up-channels:");
++
++	info.name = channel_name;
++	info.name_length = sizeof(channel_name);
++
++	for (i = 0; i < global_ctrl.num_up_buffers; i++) {
++		ret = global_source.read_buffer_info(&global_ctrl, i,
++			RTT_CHANNEL_TYPE_UP, &info, global_target, NULL);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		if (!info.size)
++			continue;
++
++		LOG_INFO("%zu: %s %u %u", i, info.name, info.size, info.flags);
++	}
++
++	LOG_INFO("Down-channels:");
++
++	for (i = 0; i < global_ctrl.num_down_buffers; i++) {
++		ret = global_source.read_buffer_info(&global_ctrl, i,
++			RTT_CHANNEL_TYPE_DOWN, &info, global_target, NULL);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		if (!info.size)
++			continue;
++
++		LOG_INFO("%zu: %s %u %u", i, info.name, info.size, info.flags);
++	}
++
++	return ERROR_OK;
++}
++
++static int jim_channel_list(Jim_Interp *interp, int argc,
++		Jim_Obj * const *argv)
++{
++	int ret;
++	size_t i;
++	Jim_Obj *list;
++	Jim_Obj *channel_list;
++	char channel_name[128];
++	struct rtt_buffer_info info;
++
++	if (!global_found_cb) {
++		LOG_ERROR("RTT control block not available");
++		return ERROR_FAIL;
++	}
++
++	info.name = channel_name;
++	info.name_length = sizeof(channel_name);
++
++	list = Jim_NewListObj(interp, NULL, 0);
++
++	channel_list = Jim_NewListObj(interp, NULL, 0);
++
++	for (i = 0; i < global_ctrl.num_up_buffers; i++) {
++		ret = global_source.read_buffer_info(&global_ctrl, i,
++			RTT_CHANNEL_TYPE_UP, &info, global_target, NULL);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		if (!info.size)
++			continue;
++
++		Jim_Obj *tmp = Jim_NewListObj(interp, NULL, 0);
++
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			"name", -1));
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			info.name, -1));
++
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			"size", -1));
++		Jim_ListAppendElement(interp, tmp, Jim_NewIntObj(interp,
++			info.size));
++
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			"flags", -1));
++		Jim_ListAppendElement(interp, tmp, Jim_NewIntObj(interp,
++			info.flags));
++
++		Jim_ListAppendElement(interp, channel_list, tmp);
++	}
++
++	Jim_ListAppendElement(interp, list, channel_list);
++
++	channel_list = Jim_NewListObj(interp, NULL, 0);
++
++	for (i = 0; i < global_ctrl.num_down_buffers; i++) {
++		ret = global_source.read_buffer_info(&global_ctrl, i,
++			RTT_CHANNEL_TYPE_DOWN, &info, global_target, NULL);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		if (!info.size)
++			continue;
++
++		Jim_Obj *tmp = Jim_NewListObj(interp, NULL, 0);
++
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			"name", -1));
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			info.name, -1));
++
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			"size", -1));
++		Jim_ListAppendElement(interp, tmp, Jim_NewIntObj(interp,
++			info.size));
++
++		Jim_ListAppendElement(interp, tmp, Jim_NewStringObj(interp,
++			"flags", -1));
++		Jim_ListAppendElement(interp, tmp, Jim_NewIntObj(interp,
++			info.flags));
++
++		Jim_ListAppendElement(interp, channel_list, tmp);
++	}
++
++	Jim_ListAppendElement(interp, list, channel_list);
++	Jim_SetResult(interp, list);
++
++	return JIM_OK;
++}
++
++static const struct command_registration rtt_subcommand_handlers[] = {
++	{
++		.name = "setup",
++		.handler = handle_rtt_setup_command,
++		.mode = COMMAND_ANY,
++		.help = "setup RTT",
++		.usage = "<address> <length> <ID>"
++	},
++	{
++		.name = "start",
++		.handler = handle_rtt_start_command,
++		.mode = COMMAND_EXEC,
++		.help = "start RTT",
++		.usage = ""
++	},
++	{
++		.name = "stop",
++		.handler = handle_rtt_stop_command,
++		.mode = COMMAND_EXEC,
++		.help = "stop RTT",
++		.usage = ""
++	},
++	{
++		.name = "channels",
++		.handler = handle_rtt_channels_command,
++		.mode = COMMAND_EXEC,
++		.help = "list available channels",
++		.usage = ""
++	},
++	{
++		.name = "channellist",
++		.jim_handler = jim_channel_list,
++		.mode = COMMAND_EXEC,
++		.help = "list available channels",
++		.usage = ""
++	},
++	COMMAND_REGISTRATION_DONE
++};
++
++static const struct command_registration rtt_command_handlers[] = {
++	{
++		.name = "rtt",
++		.mode = COMMAND_EXEC,
++		.help = "RTT commands",
++		.usage = "",
++		.chain = rtt_subcommand_handlers
++	},
++	COMMAND_REGISTRATION_DONE
++};
++
++int rtt_register_commands(struct command_context *ctx)
++{
++	return register_commands(ctx, NULL, rtt_command_handlers);
++}
+diff --git a/src/rtt/rtt.h b/src/rtt/rtt.h
+new file mode 100644
+index 00000000..899ac593
+--- /dev/null
++++ b/src/rtt/rtt.h
+@@ -0,0 +1,119 @@
++/*
++ * Copyright (C) 2016-2017 by Marc Schink
++ * openocd-dev@marcschink.de
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef OPENOCD_RTT_RTT_H
++#define OPENOCD_RTT_RTT_H
++
++#include <stdint.h>
++#include <stdbool.h>
++
++#include <helper/command.h>
++#include <target/target.h>
++
++#define RTT_MAX_CB_ID_LENGTH	16
++#define RTT_MIN_BUFFER_SIZE	2
++#define RTT_CB_LENGTH		(RTT_MAX_CB_ID_LENGTH + 4 + 4)
++#define RTT_BUFFER_LENGTH	24
++
++struct rtt_control {
++	target_addr_t address;
++	char id[RTT_MAX_CB_ID_LENGTH + 1];
++	uint32_t num_up_buffers;
++	uint32_t num_down_buffers;
++};
++
++struct rtt_buffer {
++	target_addr_t address;
++	target_addr_t name_addr;
++	target_addr_t buffer_addr;
++	uint32_t size;
++	uint32_t write_offset;
++	uint32_t read_offset;
++	uint32_t flags;
++};
++
++struct rtt_buffer_info {
++	char *name;
++	size_t name_length;
++	uint32_t size;
++	uint32_t flags;
++};
++
++typedef int (*rtt_sink_read)(unsigned int channel, const uint8_t *buffer,
++		size_t length, void *user_data);
++
++struct rtt_sink_list {
++	rtt_sink_read read;
++	void *user_data;
++
++	struct rtt_sink_list *next;
++};
++
++enum rtt_channel_type {
++	RTT_CHANNEL_TYPE_UP,
++	RTT_CHANNEL_TYPE_DOWN
++};
++
++typedef int (*rtt_source_find_ctrl_block)(target_addr_t *address,
++		size_t length, const char *id, size_t id_length, bool *found,
++		struct target *target, void *user_data);
++typedef int (*rtt_source_read_ctrl_block)(target_addr_t address,
++		struct rtt_control *ctrl_block, struct target *target,
++		void *user_data);
++typedef int (*rtt_source_read_buffer_info)(const struct rtt_control *ctrl,
++		unsigned int channel, enum rtt_channel_type type,
++		struct rtt_buffer_info *info, struct target *target, void *user_data);
++typedef int (*rtt_source_start)(const struct rtt_control *ctrl,
++		struct target *target, void *user_data);
++typedef int (*rtt_source_stop)(struct target *target, void *user_data);
++typedef int (*rtt_source_read)(const struct rtt_control *ctrl,
++		struct rtt_sink_list **sinks, size_t num_channels,
++		struct target *target, void *user_data);
++typedef int (*rtt_source_write)(struct rtt_control *ctrl,
++		unsigned int channel, const uint8_t *buffer, size_t *length,
++		struct target *target, void *user_data);
++
++struct rtt_source {
++	rtt_source_find_ctrl_block find_cb;
++	rtt_source_read_ctrl_block read_cb;
++	rtt_source_read_buffer_info read_buffer_info;
++	rtt_source_start start;
++	rtt_source_stop stop;
++	rtt_source_read read;
++	rtt_source_write write;
++};
++
++int rtt_init(void);
++int rtt_exit(void);
++
++int rtt_register_source(const struct rtt_source source, struct target *target);
++
++int rtt_start(void);
++int rtt_stop(void);
++
++int rtt_register_sink(unsigned int channel, rtt_sink_read read,
++		void *user_data);
++int rtt_unregister_sink(unsigned int channel, rtt_sink_read read,
++		void *user_data);
++
++int rtt_write_channel(unsigned int channel, const uint8_t *buffer,
++		size_t *length);
++
++int rtt_register_commands(struct command_context *ctx);
++
++#endif /* OPENOCD_RTT_RTT_H */
+diff --git a/src/server/Makefile.am b/src/server/Makefile.am
+index 804efac1..d270ee28 100644
+--- a/src/server/Makefile.am
++++ b/src/server/Makefile.am
+@@ -8,7 +8,9 @@ noinst_LTLIBRARIES += %D%/libserver.la
+ 	%D%/gdb_server.h \
+ 	%D%/server_stubs.c \
+ 	%D%/tcl_server.c \
+-	%D%/tcl_server.h
++	%D%/tcl_server.h \
++	%D%/rtt_server.c \
++	%D%/rtt_server.h
+ 
+ %C%_libserver_la_CFLAGS = $(AM_CFLAGS)
+ if IS_MINGW
+diff --git a/src/server/rtt_server.c b/src/server/rtt_server.c
+new file mode 100644
+index 00000000..b33623dd
+--- /dev/null
++++ b/src/server/rtt_server.c
+@@ -0,0 +1,182 @@
++/*
++ * Copyright (C) 2016-2017 by Marc Schink
++ * openocd-dev@marcschink.de
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <stdint.h>
++#include <rtt/rtt.h>
++
++#include "server.h"
++#include "rtt_server.h"
++
++/**
++ * @file
++ *
++ * RTT server.
++ *
++ * This server allows access to Real Time Transfer (RTT) channels via TCP
++ * connections.
++ */
++
++struct rtt_service {
++	unsigned int channel;
++};
++
++static int read_callback(unsigned int channel, const uint8_t *buffer,
++		size_t length, void *user_data)
++{
++	int ret;
++	struct connection *connection;
++	size_t offset;
++
++	connection = (struct connection *)user_data;
++	offset = 0;
++
++	while (offset < length) {
++		ret = connection_write(connection, buffer + offset, length - offset);
++
++		if (ret < 0) {
++			LOG_ERROR("Failed to write data to socket.");
++			return ERROR_FAIL;
++		}
++
++		offset += ret;
++	}
++
++	return ERROR_OK;
++}
++
++static int rtt_new_connection(struct connection *connection)
++{
++	int ret;
++	struct rtt_service *service;
++
++	service = connection->service->priv;
++
++	LOG_DEBUG("New connection for RTT channel %u", service->channel);
++
++	ret = rtt_register_sink(service->channel, &read_callback, connection);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	return ERROR_OK;
++}
++
++static int rtt_connection_closed(struct connection *connection)
++{
++	struct rtt_service *service;
++
++	service = (struct rtt_service *)connection->service->priv;
++	rtt_unregister_sink(service->channel, &read_callback, connection);
++
++	LOG_DEBUG("Connection for RTT channel %u closed", service->channel);
++
++	return ERROR_OK;
++}
++
++static int rtt_input(struct connection *connection)
++{
++	int bytes_read;
++	unsigned char buffer[1024];
++	struct rtt_service *service;
++	size_t length;
++
++	service = (struct rtt_service *)connection->service->priv;
++	bytes_read = connection_read(connection, buffer, sizeof(buffer));
++
++	if (!bytes_read)
++		return ERROR_SERVER_REMOTE_CLOSED;
++	else if (bytes_read < 0) {
++		LOG_ERROR("error during read: %s", strerror(errno));
++		return ERROR_SERVER_REMOTE_CLOSED;
++	}
++
++	length = bytes_read;
++	rtt_write_channel(service->channel, buffer, &length);
++
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(handle_rtt_start_command)
++{
++	int ret;
++	struct rtt_service *service;
++
++	if (CMD_ARGC != 2)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++
++	service = malloc(sizeof(struct rtt_service));
++
++	if (!service)
++		return ERROR_FAIL;
++
++	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[1], service->channel);
++
++	ret = add_service("RTT", CMD_ARGV[0], CONNECTION_LIMIT_UNLIMITED,
++		rtt_new_connection, rtt_input, rtt_connection_closed, service);
++
++	if (ret != ERROR_OK) {
++		free(service);
++		return ERROR_FAIL;
++	}
++
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(handle_rtt_stop_command)
++{
++	if (CMD_ARGC != 1)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++
++	remove_service("RTT", CMD_ARGV[0]);
++
++	return ERROR_OK;
++}
++
++static const struct command_registration rtt_subcommand_handlers[] = {
++	{
++		.name = "start",
++		.handler = handle_rtt_start_command,
++		.mode = COMMAND_ANY,
++		.help = "Start a RTT server",
++		.usage = "<port> <channel>"
++	},
++	{
++		.name = "stop",
++		.handler = handle_rtt_stop_command,
++		.mode = COMMAND_ANY,
++		.help = "Stop a RTT server",
++		.usage = "<port>"
++	},
++	COMMAND_REGISTRATION_DONE
++};
++
++static const struct command_registration rtt_command_handlers[] = {
++	{
++		.name = "rttserver",
++		.mode = COMMAND_ANY,
++		.help = "RTT server",
++		.usage = "",
++		.chain = rtt_subcommand_handlers
++	},
++	COMMAND_REGISTRATION_DONE
++};
++
++int rtt_server_register_commands(struct command_context *ctx)
++{
++	return register_commands(ctx, NULL, rtt_command_handlers);
++}
+diff --git a/src/server/rtt_server.h b/src/server/rtt_server.h
+new file mode 100644
+index 00000000..5f8780e7
+--- /dev/null
++++ b/src/server/rtt_server.h
+@@ -0,0 +1,26 @@
++/*
++ * Copyright (C) 2016-2017 by Marc Schink
++ * openocd-dev@marcschink.de
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef OPENOCD_SERVER_RTT_SERVER_H
++#define OPENOCD_SERVER_RTT_SERVER_H
++
++#include <helper/command.h>
++
++int rtt_server_register_commands(struct command_context *ctx);
++
++#endif /* OPENOCD_SERVER_RTT_SERVER_H */
+diff --git a/src/target/Makefile.am b/src/target/Makefile.am
+index 05f17487..933ecf06 100644
+--- a/src/target/Makefile.am
++++ b/src/target/Makefile.am
+@@ -43,7 +43,8 @@ TARGET_CORE_SRC = \
+ 	%D%/target_request.c \
+ 	%D%/testee.c \
+ 	%D%/semihosting_common.c \
+-	%D%/smp.c
++	%D%/smp.c \
++	%D%/rtt.c
+ 
+ ARMV4_5_SRC = \
+ 	%D%/armv4_5.c \
+@@ -226,7 +227,8 @@ ESIRISC_SRC = \
+ 	%D%/arm_cti.h \
+ 	%D%/esirisc.h \
+ 	%D%/esirisc_jtag.h \
+-	%D%/esirisc_regs.h
++	%D%/esirisc_regs.h \
++	%D%/rtt.h
+ 
+ include %D%/openrisc/Makefile.am
+ include %D%/riscv/Makefile.am
+diff --git a/src/target/rtt.c b/src/target/rtt.c
+new file mode 100644
+index 00000000..ca35836e
+--- /dev/null
++++ b/src/target/rtt.c
+@@ -0,0 +1,413 @@
++/*
++ * Copyright (C) 2016-2017 by Marc Schink
++ * openocd-dev@marcschink.de
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <stddef.h>
++#include <stdint.h>
++#include <helper/log.h>
++#include <helper/binarybuffer.h>
++#include <helper/command.h>
++#include <rtt/rtt.h>
++
++#include "target.h"
++
++static uint8_t rtt_buffer[1024];
++
++static int read_rtt_buffer(struct target *target,
++		const struct rtt_control *ctrl, unsigned int channel,
++		enum rtt_channel_type type, struct rtt_buffer *buffer)
++{
++	int ret;
++	uint8_t buf[RTT_BUFFER_LENGTH];
++	target_addr_t address;
++
++	address = ctrl->address + RTT_CB_LENGTH + (channel * RTT_BUFFER_LENGTH);
++
++	if (type == RTT_CHANNEL_TYPE_DOWN)
++		address += ctrl->num_up_buffers * RTT_BUFFER_LENGTH;
++
++	ret = target_read_buffer(target, address, RTT_BUFFER_LENGTH, buf);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	buffer->address = address;
++	buffer->name_addr = buf_get_u32(buf, 0, 32);
++	buffer->buffer_addr = buf_get_u32(buf + 4, 0, 32);
++	buffer->size = buf_get_u32(buf + 8, 0, 32);
++	buffer->write_offset = buf_get_u32(buf + 12, 0, 32);
++	buffer->read_offset = buf_get_u32(buf + 16, 0, 32);
++	buffer->flags = buf_get_u32(buf + 20, 0, 32);
++
++	return ERROR_OK;
++}
++
++int target_rtt_start(const struct rtt_control *ctrl, struct target *target,
++		void *user_data)
++{
++	return ERROR_OK;
++}
++
++int target_rtt_stop(struct target *target, void *user_data)
++{
++	return ERROR_OK;
++}
++
++static int read_buffer_name(struct target *target, target_addr_t address,
++		char *name, size_t length)
++{
++	size_t offset;
++
++	offset = 0;
++
++	while (offset < length) {
++		int ret;
++		size_t tmp;
++
++		tmp = MIN(32, length - offset);
++		ret = target_read_buffer(target, address + offset, tmp,
++			(uint8_t *)name + offset);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		if (memchr(name + offset, '\0', tmp))
++			return ERROR_OK;
++
++		offset += tmp;
++	}
++
++	name[length - 1] = '\0';
++
++	return ERROR_OK;
++}
++
++static int write_to_channel(struct target *target,
++		const struct rtt_buffer *rttbuf, const uint8_t *buffer, size_t *length)
++{
++	int ret;
++	uint32_t len;
++
++	if (!*length)
++		return ERROR_OK;
++
++	if (rttbuf->write_offset == rttbuf->read_offset) {
++		uint32_t first_length;
++
++		len = MIN(*length, rttbuf->size - 1);
++		first_length = MIN(len, rttbuf->size - rttbuf->write_offset);
++
++		ret = target_write_buffer(target,
++			rttbuf->buffer_addr + rttbuf->write_offset, first_length, buffer);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		ret = target_write_buffer(target, rttbuf->buffer_addr,
++			len - first_length, buffer + first_length);
++
++		if (ret != ERROR_OK)
++			return ret;
++	} else if (rttbuf->write_offset < rttbuf->read_offset) {
++		len = MIN(*length, rttbuf->read_offset - rttbuf->write_offset - 1);
++
++		if (!len) {
++			*length = 0;
++			return ERROR_OK;
++		}
++
++		ret = target_write_buffer(target,
++			rttbuf->buffer_addr + rttbuf->write_offset, len, buffer);
++
++		if (ret != ERROR_OK)
++			return ret;
++	} else {
++		uint32_t first_length;
++
++		len = MIN(*length,
++			rttbuf->size - rttbuf->write_offset + rttbuf->read_offset - 1);
++
++		if (!len) {
++			*length = 0;
++			return ERROR_OK;
++		}
++
++		first_length = MIN(len, rttbuf->size - rttbuf->write_offset);
++
++		ret = target_write_buffer(target,
++			rttbuf->buffer_addr + rttbuf->write_offset, first_length, buffer);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		buffer = buffer + first_length;
++
++		ret = target_write_buffer(target, rttbuf->buffer_addr,
++			len - first_length, buffer);
++
++		if (ret != ERROR_OK)
++			return ret;
++	}
++
++	ret = target_write_u32(target, rttbuf->address + 12,
++		(rttbuf->write_offset + len) % rttbuf->size);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	*length = len;
++
++	return ERROR_OK;
++}
++
++static bool buffer_is_active(const struct rtt_buffer *buf)
++{
++	if (!buf)
++		return false;
++
++	if (!buf->size)
++		return false;
++
++	return true;
++}
++
++int target_rtt_write_callback(struct rtt_control *ctrl,
++		unsigned int channel, const uint8_t *buffer, size_t *length,
++		struct target *target, void *user_data)
++{
++	int ret;
++	struct rtt_buffer rttbuf;
++
++	ret = read_rtt_buffer(target, ctrl, channel, RTT_CHANNEL_TYPE_DOWN,
++		&rttbuf);
++
++	if (ret != ERROR_OK) {
++		LOG_ERROR("Failed to read RTT buffer of down-channel %u", channel);
++		return ret;
++	}
++
++	if (!buffer_is_active(&rttbuf)) {
++		LOG_WARNING("Down-channel %u is not active", channel);
++		return ERROR_OK;
++	}
++
++	if (rttbuf.size < RTT_MIN_BUFFER_SIZE) {
++		LOG_WARNING("Down-channel %u is not large enough", channel);
++		return ERROR_OK;
++	}
++
++	ret = write_to_channel(target, &rttbuf, buffer,	length);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	LOG_DEBUG("Wrote %zu bytes into RTT down-channel %u", *length, channel);
++
++	return ERROR_OK;
++}
++
++int target_rtt_read_control_block(target_addr_t address,
++		struct rtt_control *ctrl, struct target *target, void *user_data)
++{
++	int ret;
++	uint8_t buf[RTT_CB_LENGTH];
++
++	ret = target_read_buffer(target, address, RTT_CB_LENGTH, buf);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	memcpy(ctrl->id, buf, RTT_MAX_CB_ID_LENGTH);
++	ctrl->id[RTT_MAX_CB_ID_LENGTH] = '\0';
++	ctrl->num_up_buffers = buf_get_u32(buf + RTT_MAX_CB_ID_LENGTH, 0, 32);
++	ctrl->num_down_buffers = buf_get_u32(buf + RTT_MAX_CB_ID_LENGTH + 4, 0,
++		32);
++
++	return ERROR_OK;
++}
++
++int target_rtt_find_control_block(target_addr_t *address, size_t length,
++		const char *id, size_t id_length, bool *found, struct target *target,
++		void *user_data)
++{
++	target_addr_t addr;
++	uint8_t buf[1024];
++	size_t j;
++	size_t start;
++
++	*found = false;
++
++	j = 0;
++	start = 0;
++
++	LOG_INFO("Searching for RTT control block '%s'", id);
++
++	for (addr = 0; addr < length; addr = addr + sizeof(buf)) {
++		int ret;
++		size_t i;
++
++		ret = target_read_buffer(target, *address + addr, sizeof(buf), buf);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		for (i = 0; i < sizeof(buf); i++) {
++			if (buf[i] == id[j]) {
++				j++;
++			} else {
++				j = 0;
++				start = addr + i + 1;
++			}
++
++			if (j == id_length) {
++				*address = *address + start;
++				*found = true;
++				return ERROR_OK;
++			}
++		}
++	}
++
++	return ERROR_OK;
++}
++
++int target_rtt_read_buffer_info(const struct rtt_control *ctrl,
++		unsigned int channel, enum rtt_channel_type type,
++		struct rtt_buffer_info *info, struct target *target, void *user_data)
++{
++	int ret;
++	struct rtt_buffer rttbuf;
++
++	ret = read_rtt_buffer(target, ctrl, channel, type, &rttbuf);
++
++	if (ret != ERROR_OK) {
++		LOG_ERROR("Failed to read RTT buffer of channel %u", channel);
++		return ret;
++	}
++
++	ret = read_buffer_name(target, rttbuf.name_addr, info->name,
++		info->name_length);
++
++	if (ret != ERROR_OK)
++		return ret;
++
++	info->size = rttbuf.size;
++	info->flags = rttbuf.flags;
++
++	return ERROR_OK;
++}
++
++static int read_from_channel(struct target *target,
++		const struct rtt_buffer *rttbuf, uint8_t *buffer, size_t *length)
++{
++	int ret;
++	uint32_t len;
++
++	if (!*length)
++		return ERROR_OK;
++
++	if (rttbuf->read_offset == rttbuf->write_offset) {
++		len = 0;
++	} else if (rttbuf->read_offset < rttbuf->write_offset) {
++		len = MIN(*length, rttbuf->write_offset - rttbuf->read_offset);
++
++		ret = target_read_buffer(target,
++			rttbuf->buffer_addr + rttbuf->read_offset, len, buffer);
++
++		if (ret != ERROR_OK)
++			return ret;
++	} else {
++		uint32_t first_length;
++
++		len = MIN(*length,
++			rttbuf->size - rttbuf->read_offset + rttbuf->write_offset);
++		first_length = MIN(len, rttbuf->size - rttbuf->read_offset);
++
++		ret = target_read_buffer(target,
++			rttbuf->buffer_addr + rttbuf->read_offset, first_length, buffer);
++
++		if (ret != ERROR_OK)
++			return ret;
++
++		ret = target_read_buffer(target, rttbuf->buffer_addr,
++			len - first_length, buffer + first_length);
++
++		if (ret != ERROR_OK)
++			return ret;
++	}
++
++	if (len > 0) {
++		ret = target_write_u32(target, rttbuf->address + 16,
++			(rttbuf->read_offset + len) % rttbuf->size);
++
++		if (ret != ERROR_OK)
++			return ret;
++	}
++
++	*length = len;
++
++	return ERROR_OK;
++}
++
++int target_rtt_read_callback(const struct rtt_control *ctrl,
++		struct rtt_sink_list **sinks, size_t num_channels,
++		struct target *target, void *user_data)
++{
++	size_t channel;
++
++	num_channels = MIN(num_channels, ctrl->num_up_buffers);
++
++	for (channel = 0; channel < num_channels; channel++) {
++		int ret;
++		struct rtt_buffer rttbuf;
++		size_t length;
++		struct rtt_sink_list *tmp;
++
++		if (!sinks[channel])
++			continue;
++
++		ret = read_rtt_buffer(target, ctrl, channel, RTT_CHANNEL_TYPE_UP,
++			&rttbuf);
++
++		if (ret != ERROR_OK) {
++			LOG_ERROR("Failed to read RTT buffer of up-channel %zu", channel);
++			return ret;
++		}
++
++		if (!buffer_is_active(&rttbuf)) {
++			LOG_WARNING("Up-channel %zu is not active", channel);
++			continue;
++		}
++
++		if (rttbuf.size < RTT_MIN_BUFFER_SIZE) {
++			LOG_WARNING("Up-channel %zu is not large enough", channel);
++			continue;
++		}
++
++		length = sizeof(rtt_buffer);
++		ret = read_from_channel(target, &rttbuf, rtt_buffer, &length);
++
++		if (ret != ERROR_OK) {
++			LOG_ERROR("Failed to read from RTT up-channel %zu", channel);
++			return ret;
++		}
++
++		for (tmp = sinks[channel]; tmp; tmp = tmp->next)
++			tmp->read(channel, rtt_buffer, length, tmp->user_data);
++	}
++
++	return ERROR_OK;
++}
+diff --git a/src/target/rtt.h b/src/target/rtt.h
+new file mode 100644
+index 00000000..12db8c8c
+--- /dev/null
++++ b/src/target/rtt.h
+@@ -0,0 +1,46 @@
++/*
++ * Copyright (C) 2016-2017 by Marc Schink
++ * openocd-dev@marcschink.de
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef OPENOCD_TARGET_RTT_H
++#define OPENOCD_TARGET_RTT_H
++
++#include <stdint.h>
++#include <stdbool.h>
++
++#include <target/target.h>
++#include <rtt/rtt.h>
++
++int target_rtt_start(const struct rtt_control *ctrl, struct target *target,
++		void *user_data);
++int target_rtt_stop(struct target *target, void *user_data);
++int target_rtt_find_control_block(target_addr_t *address, size_t length,
++		const char *id, size_t id_length, bool *found, struct target *target,
++		void *uer_data);
++int target_rtt_read_control_block(target_addr_t address,
++		struct rtt_control *ctrl, struct target *target, void *user_data);
++int target_rtt_write_callback(struct rtt_control *ctrl,
++		unsigned int channel, const uint8_t *buffer, size_t *length,
++		struct target *target, void *user_data);
++int target_rtt_read_callback(const struct rtt_control *ctrl,
++		struct rtt_sink_list **sinks, size_t length, struct target *target,
++		void *user_data);
++int target_rtt_read_buffer_info(const struct rtt_control *ctrl,
++		unsigned int channel, enum rtt_channel_type type,
++		struct rtt_buffer_info *info, struct target *target, void *user_data);
++
++#endif /* OPENOCD_TARGET_RTT_H */
