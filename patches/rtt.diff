@@ -74,7 +74,7 @@ new file mode 100644
 index 00000000..ab9e0a9d
 --- /dev/null
 +++ b/src/rtt/rtt.c
-@@ -0,0 +1,521 @@
+@@ -0,0 +1,522 @@
 +/*
 + * Copyright (C) 2016-2017 by Marc Schink
 + * openocd-dev@marcschink.de
@@ -352,6 +352,7 @@ index 00000000..ab9e0a9d
 +
 +	global_addr = addr;
 +	global_length = length;
++	memset(global_id, 0, RTT_MAX_CB_ID_LENGTH);
 +	memcpy(global_id, CMD_ARGV[2], global_id_length);
 +	global_changed = true;
 +	global_configured = true;
