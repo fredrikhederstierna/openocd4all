@@ -62,8 +62,10 @@ echo "Canonical path to build: $OPENOCD_DIR_CANONICAL"
 # links taken from http://openocd.org/repos/
 # official git
 #git clone git://git.code.sf.net/p/openocd/code $OPENOCD_DIR
+git clone http://git.code.sf.net/p/openocd/code $OPENOCD_DIR
 # mirror if behind firewall, try HTTP
-git clone http://repo.or.cz/r/openocd.git $OPENOCD_DIR
+#(gitweb: http://repo.or.cz/w/openocd.git)
+#git clone http://repo.or.cz/r/openocd.git $OPENOCD_DIR
 
 # Enter openocd source dir
 cd $OPENOCD_DIR
@@ -95,14 +97,14 @@ git apply ../patches/submodules_master.diff
 # rebased: http://openocd.zylin.com/#/c/4055/
 # [1] https://devzone.nordicsemi.com/tutorials/6/
 # [2] https://www.segger.com/jlink-rtt.html
-git apply ../patches/rtt.diff
+#git apply ../patches/rtt.diff
 
 # Configure openocd, enable all available dongles and some verbose debug
 ./bootstrap
 ./configure --verbose --disable-verbose-usb-io --disable-verbose-usb-comms --enable-ftdi --enable-stlink --enable-jlink --enable-rlink --enable-ti-icdi --enable-cmsis-dap --enable-maintainer-mode --prefix="$OPENOCD_DIR_CANONICAL/build" --exec-prefix="$OPENOCD_DIR_CANONICAL/build"
 
 # Build openocd, do not do make install, keep binary in src dir
-make
+make LIBS=-lutil
 # Copies from src dir into build dir
 make install
 
