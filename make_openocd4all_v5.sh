@@ -74,7 +74,10 @@ cd $OPENOCD_DIR
 #git checkout -q 81631e49a608be93af0a473ec3f099cb556a2c8a
 #git checkout -q c2b2a7a3b84913465420ae7fa0394304943cf035
 #git checkout -q 06589d2de48556f5216e3e671e656f4fd9069b43
-git checkout master
+#git checkout -q 09ac9ab135ed35c846bcec4f7d468c3656852f26
+#git checkout -q 4fc61a2f9d60e49b8134ab7e0929cfb2b3a4f771
+git checkout -q 68e50415a115f3b80b7d1a1b580287745b281a5c
+#git checkout master
 
 # Apply patches
 # patches from zylin git gerrit to get extra TI cc13xx support
@@ -91,7 +94,8 @@ git checkout master
 #patch -p1 -i ../patches/3510e88.diff
 
 # patch to get extra libjaylink support (J-Trace) from submodule master
-git apply ../patches/submodules_master.diff
+#git apply ../patches/submodules_master.diff
+#git apply ../patches/rtt2.diff
 
 # patch to add support for Segger RTT debug channel.
 # rebased: http://openocd.zylin.com/#/c/4055/
