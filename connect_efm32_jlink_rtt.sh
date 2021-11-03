@@ -27,8 +27,8 @@ sudo ./oo4all -f connect_efm32_jlink_rtt.cfg
 
 # Connect script setup rttserver, see
 # Commands rttserver:
-# rttserver start <port> <channel>
-# rttserver stop <port>
+# rtt server start <port> <channel>
+# rtt server stop <port>
 #
 # Commands RTT:
 # rtt setup <address> <length> <ID>
