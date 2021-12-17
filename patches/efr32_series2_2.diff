@@ -1,0 +1,67 @@
+diff --git a/tcl/chip/efr32xg22.tcl b/tcl/chip/efr32xg22.tcl
+new file mode 100644
+index 00000000000..05aafba891b
+--- /dev/null
++++ b/tcl/chip/efr32xg22.tcl
+@@ -0,0 +1,32 @@
++# Copyright 2021 Square, Inc.
++
++# EFR32xG22 Series 2 SoCs provide a secure bootloader, which causes issues
++# communicating with the DAP on reset. The following workaround uses ARP
++# commands to poll the SoC prior to halting the core.
++#
++# To enable this workaround, add the following to the target configuration:
++#
++# proc init_reset { mode } { efr32xg22_reset_mode $mode }
++#
++# $_TARGETNAME configure -event reset-deassert-post "efr32xg22_deassert_post $_TARGETNAME"
++
++proc efr32xg22_reset_mode { mode } {
++	set ::efr32xg22_reset_mode $mode
++}
++
++proc efr32xg22_deassert_post { target } {
++	$target arp_examine
++
++	if { $::efr32xg22_reset_mode ne "run" } {
++		$target arp_poll
++		$target arp_poll
++
++		if { [$target curstate] eq "reset" } {
++			catch {$target arp_waitstate running 100 }
++		}
++
++		if { [$target curstate] eq "running" } {
++			$target arp_halt
++		}
++	}
++}
+diff --git a/tcl/target/efr32xg22.cfg b/tcl/target/efr32xg22.cfg
+new file mode 100644
+index 00000000000..e25adcf1508
+--- /dev/null
++++ b/tcl/target/efr32xg22.cfg
+@@ -0,0 +1,23 @@
++# Copyright 2021 Square, Inc.
++
++set CHIPNAME efr32xg22
++source [find target/efm32.cfg]
++
++adapter_khz 1900
++
++$_TARGETNAME configure -event gdb-attach {
++    cortex_m maskisr auto   ;# mask interrupts while stepping
++}
++
++reset_config srst_nogate
++
++# EFR32xG22 Series 2 SoCs provide a secure bootloader, which causes issues
++# communicating with the DAP on reset. The following workaround uses ARP
++# commands to poll the SoC prior to halting the core.
++source [find chip/efr32xg22.tcl]
++
++proc init_reset { mode } {
++	efr32xg22_reset_mode $mode
++}
++
++$_TARGETNAME configure -event reset-deassert-post "efr32xg22_deassert_post $_TARGETNAME"
