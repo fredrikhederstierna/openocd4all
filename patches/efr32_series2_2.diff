@@ -47,7 +47,7 @@ index 00000000000..e25adcf1508
 +set CHIPNAME efr32xg22
 +source [find target/efm32.cfg]
 +
-+adapter_speed 1900
++adapter speed 1900
 +
 +$_TARGETNAME configure -event gdb-attach {
 +    cortex_m maskisr auto   ;# mask interrupts while stepping
